@@ -1,0 +1,25 @@
+{
+  "name": "Festa São João - Sistema Cashless",
+  "short_name": "SJPII Cashless",
+  "description": "Sistema de pagamento cashless para a Festa de São João - Paróquia São João Paulo II",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f9f9f9",
+  "theme_color": "#5533cc",
+  "categories": ["finance", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

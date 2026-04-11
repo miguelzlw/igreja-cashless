@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ─────────────────────────────────────────────
+    function isAuth() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(uid())).data;
+    }
+    function role() { return getUserData().role; }
+    function hasRole(r) { return isAuth() && role() == r; }
+    function hasAnyRole(roles) { return isAuth() && role() in roles; }
+    function isOwner(userId) { return isAuth() && uid() == userId; }
+    function stallId() { return getUserData().stall_id; }
+
+    // ── Usuários ────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isOwner(userId) || hasAnyRole(['admin', 'caixa', 'gerente_barraca', 'vendedor']);
+      allow create: if isOwner(userId) || hasRole('admin');
+      allow update: if
+        hasRole('admin') ||
+        hasRole('caixa') ||
+        // Vendedor e gerente podem ler/escrever para fins de operação (ex: debitar)
+        hasAnyRole(['vendedor', 'gerente_barraca']) ||
+        // Usuário comum só atualiza campos que não sejam role e balance
+        (isOwner(userId) &&
+          request.resource.data.balance == resource.data.balance &&
+          request.resource.data.role == resource.data.role);
+    }
+
+    // ── Transações ──────────────────────────────────────────
+    match /transactions/{txId} {
+      allow read: if isAuth() && (
+        resource.data.user_id == uid() ||
+        resource.data.operator_id == uid() ||
+        hasAnyRole(['admin', 'caixa']) ||
+        (hasRole('gerente_barraca') && resource.data.stall_id == stallId())
+      );
+      allow create: if hasAnyRole(['admin', 'caixa', 'vendedor', 'gerente_barraca']);
+      allow update, delete: if hasRole('admin');
+    }
+
+    // ── Barracas ────────────────────────────────────────────
+    match /stalls/{stallId} {
+      allow read: if isAuth();
+      allow create: if hasRole('admin');
+      allow update: if
+        hasRole('admin') ||
+        // Gerente pode atualizar dados da SUA barraca
+        (hasRole('gerente_barraca') && stallId() == stallId) ||
+        // Vendedor pode incrementar total_sales_cents (para transações)
+        (hasAnyRole(['vendedor', 'caixa']) && stallId() == stallId);
+      allow delete: if hasRole('admin');
+    }
+
+    // ── Produtos (subcoleção) ───────────────────────────────
+    match /stalls/{stallId}/products/{productId} {
+      allow read: if isAuth();
+      allow create, update: if
+        hasRole('admin') ||
+        (hasRole('gerente_barraca') && stallId() == stallId);
+      // Vendedor pode decrementar estoque durante venda
+      allow update: if
+        hasRole('vendedor') && stallId() == stallId;
+      allow delete: if
+        hasRole('admin') ||
+        (hasRole('gerente_barraca') && stallId() == stallId);
+    }
+
+    // ── Contas Temporárias / Fichas ────────────────────────
+    match /temp_accounts/{accountId} {
+      allow read: if hasAnyRole(['admin', 'caixa']);
+      allow create: if hasRole('caixa') || hasRole('admin');
+      allow update: if hasAnyRole(['admin', 'caixa', 'vendedor']);
+      allow delete: if hasRole('admin');
+    }
+
+    // ── Bloqueio padrão ─────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "dev": "festa-saojoao-dev",
+    "prod": "festa-saojoao-prod"
+  }
+}

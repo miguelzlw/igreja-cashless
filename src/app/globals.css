@@ -1,0 +1,197 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Design System: Igreja Cashless ===== */
+
+@layer base {
+  :root {
+    --bg: 0, 0%, 98%;
+    --surface: 0, 0%, 100%;
+    --text-primary: 230, 25%, 10%;
+    --text-secondary: 230, 15%, 40%;
+    --text-muted: 230, 10%, 60%;
+    --border: 230, 15%, 90%;
+    --ring: 250, 80%, 55%;
+    --overlay: 0, 0%, 0%;
+  }
+
+  .dark {
+    --bg: 230, 25%, 10%;
+    --surface: 230, 25%, 14%;
+    --text-primary: 0, 0%, 95%;
+    --text-secondary: 230, 15%, 70%;
+    --text-muted: 230, 10%, 50%;
+    --border: 230, 20%, 22%;
+    --ring: 250, 80%, 65%;
+    --overlay: 0, 0%, 0%;
+  }
+
+  * {
+    @apply border-[hsl(var(--border))];
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-[hsl(var(--bg))] text-[hsl(var(--text-primary))] font-sans antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-[hsl(var(--text-muted)/0.3)] rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-[hsl(var(--text-muted)/0.5)];
+  }
+}
+
+@layer components {
+  /* Glassmorphism card */
+  .glass-card {
+    @apply bg-[hsl(var(--surface)/0.8)] backdrop-blur-lg border border-[hsl(var(--border)/0.5)] rounded-2xl shadow-lg;
+  }
+
+  .dark .glass-card {
+    @apply bg-[hsl(var(--surface)/0.6)] border-[hsl(var(--border)/0.3)];
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary-300;
+  }
+
+  /* Balance card glow */
+  .balance-glow {
+    @apply relative overflow-hidden;
+  }
+  .balance-glow::before {
+    content: "";
+    @apply absolute -inset-1 bg-gradient-to-r from-primary/20 via-primary-300/20 to-primary/20 rounded-2xl blur-xl opacity-60;
+    animation: pulseSoft 3s ease-in-out infinite;
+  }
+
+  /* Shimmer loading */
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+  .shimmer::after {
+    content: "";
+    @apply absolute inset-0;
+    background: linear-gradient(90deg, transparent, hsl(var(--surface) / 0.4), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+
+  /* Touch-friendly button base */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-xl
+           min-h-[48px] px-6 transition-all duration-200 ease-out
+           active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary text-white hover:bg-primary-hover shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/30;
+  }
+
+  .btn-secondary {
+    @apply btn bg-[hsl(var(--surface))] text-[hsl(var(--text-primary))] border border-[hsl(var(--border))]
+           hover:bg-[hsl(var(--bg))] shadow-sm;
+  }
+
+  .btn-success {
+    @apply btn bg-success text-white hover:bg-success-light shadow-md shadow-success/25;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger text-white hover:bg-danger-light shadow-md shadow-danger/25;
+  }
+
+  .btn-ghost {
+    @apply btn text-[hsl(var(--text-secondary))] hover:bg-[hsl(var(--surface))] hover:text-[hsl(var(--text-primary))];
+  }
+
+  .btn-icon {
+    @apply btn p-0 w-12 h-12 min-h-0;
+  }
+
+  /* Input base */
+  .input {
+    @apply w-full min-h-[48px] px-4 rounded-xl border border-[hsl(var(--border))]
+           bg-[hsl(var(--surface))] text-[hsl(var(--text-primary))]
+           placeholder:text-[hsl(var(--text-muted))]
+           focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent
+           transition-all duration-200;
+  }
+
+  /* Card */
+  .card {
+    @apply bg-[hsl(var(--surface))] rounded-2xl border border-[hsl(var(--border))] p-6 shadow-sm transition-all duration-200;
+  }
+
+  .card-interactive {
+    @apply card hover:shadow-md hover:border-primary/30 cursor-pointer active:scale-[0.98];
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-primary {
+    @apply badge bg-primary-50 text-primary dark:bg-primary/20 dark:text-primary-light;
+  }
+
+  .badge-success {
+    @apply badge bg-success-50 text-success dark:bg-success/20 dark:text-success-light;
+  }
+
+  .badge-danger {
+    @apply badge bg-danger-50 text-danger dark:bg-danger/20 dark:text-danger-light;
+  }
+
+  .badge-warning {
+    @apply badge bg-warning-50 text-warning dark:bg-warning/20 dark:text-warning-light;
+  }
+
+  /* Modal overlay */
+  .modal-overlay {
+    @apply fixed inset-0 z-50 bg-[hsl(var(--overlay)/0.5)] backdrop-blur-sm
+           flex items-center justify-center p-4 animate-fade-in;
+  }
+
+  .modal-content {
+    @apply glass-card w-full max-w-md p-6 animate-scale-bounce;
+  }
+
+  /* Offline banner */
+  .offline-banner {
+    @apply fixed top-0 left-0 right-0 z-[100] bg-danger text-white text-center py-2 px-4 text-sm font-medium
+           animate-slide-down shadow-lg;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
