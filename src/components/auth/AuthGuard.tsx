@@ -24,7 +24,7 @@ export default function AuthGuard({
 
     // Não autenticado → login
     if (!user) {
-      router.replace(fallbackPath);
+      window.location.href = fallbackPath;
       return;
     }
 
@@ -34,9 +34,9 @@ export default function AuthGuard({
     // Role não permitida → redireciona para dashboard correto
     if (allowedRoles && !allowedRoles.includes(userDoc.role)) {
       const dashboardPath = getRoleDashboardPath(userDoc.role);
-      router.replace(dashboardPath);
+      window.location.href = dashboardPath;
     }
-  }, [user, userDoc, loading, allowedRoles, router, fallbackPath]);
+  }, [user, userDoc, loading, allowedRoles, fallbackPath]);
 
   // Loading
   if (loading) {

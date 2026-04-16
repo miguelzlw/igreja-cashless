@@ -2,16 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { db } from "@/lib/firebase/config";
+import { db, functions } from "@/lib/firebase/config";
 import {
   collection, onSnapshot, query, orderBy,
-  runTransaction, doc, serverTimestamp, increment, where
+  doc, getDoc,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import type { ProductDoc, CartItem } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils/formatters";
 import {
   ShoppingCart, Store, CheckCircle2, X, Loader2,
-  Plus, Minus, Trash2, ScanLine, AlertTriangle, PackageX
+  Plus, Minus, Trash2, ScanLine, AlertTriangle, PackageX, Package, Wallet
 } from "lucide-react";
 import QRScanner from "@/components/shared/QRScanner";
 import { playSuccessSound, playErrorSound } from "@/lib/utils/sounds";
@@ -27,9 +28,12 @@ export default function VendedorDashboard() {
   // Carrinho
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
+  const [showEstoque, setShowEstoque] = useState(false);
 
   // Fluxo de checkout
   const [isScanning, setIsScanning] = useState(false);
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false);
+  const [checkedCustomer, setCheckedCustomer] = useState<{name: string, balance: number} | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -43,15 +47,13 @@ export default function VendedorDashboard() {
 
     const q = query(
       collection(db, "stalls", userDoc.stall_id, "products"),
-      where("active", "==", true),
       orderBy("name", "asc")
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const list: ProductDoc[] = snap.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      } as ProductDoc));
+      const list: ProductDoc[] = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as ProductDoc))
+        .filter(p => p.active);
       setProducts(list);
       setLoadingProducts(false);
     }, (err) => {
@@ -125,10 +127,58 @@ export default function VendedorDashboard() {
     setCart([]);
     setShowCart(false);
     setIsScanning(false);
+    setIsCheckingBalance(false);
+    setCheckedCustomer(null);
     setSuccessMessage("");
     setErrorMessage("");
     setIsProcessing(false);
   }, []);
+
+  const startCheckBalance = () => {
+    setErrorMessage("");
+    setSuccessMessage("");
+    setIsCheckingBalance(true);
+    setCheckedCustomer(null);
+  };
+
+  const handleCheckBalanceSuccess = async (decodedText: string) => {
+    const parts = decodedText.split(":");
+    if (parts.length !== 2) {
+      setErrorMessage("QR Code inválido.");
+      playErrorSound();
+      vibrateError();
+      return;
+    }
+
+    setIsCheckingBalance(false);
+    setIsProcessing(true);
+    setErrorMessage("");
+
+    try {
+      const [customerId, providedHmac] = parts;
+      const customerRef = doc(db, "users", customerId);
+      const customerSnap = await getDoc(customerRef);
+
+      if (!customerSnap.exists()) throw new Error("Cliente não encontrado.");
+      const customerData = customerSnap.data();
+
+      // Verificar HMAC contra o valor armazenado no documento do usuário
+      if (customerData.qr_hmac !== providedHmac) {
+        throw new Error("QR Code inválido ou adulterado.");
+      }
+
+      setCheckedCustomer({ name: customerData.name, balance: customerData.balance });
+      playSuccessSound();
+      vibrateSuccess();
+    } catch (err: unknown) {
+      console.error(err);
+      setErrorMessage(err instanceof Error ? err.message : "Erro ao consultar saldo.");
+      playErrorSound();
+      vibrateError();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // ── Checkout via QR Code ─────────────────────────────────
 
@@ -154,74 +204,23 @@ export default function VendedorDashboard() {
     setErrorMessage("");
 
     try {
-      const customerId = parts[0];
-      const amountCents = cartTotal;
+      const processPayment = httpsCallable<
+        { qr_payload: string; items: unknown; stall_id: string },
+        { success: boolean; total_cents: number; message: string }
+      >(functions, "processPayment");
 
-      await runTransaction(db, async (tx) => {
-        const customerRef = doc(db, "users", customerId);
-        const customerSnap = await tx.get(customerRef);
-
-        if (!customerSnap.exists()) throw new Error("Cliente não encontrado.");
-        const customerData = customerSnap.data();
-
-        if (customerData.balance < amountCents) {
-          throw new Error(`Saldo insuficiente. Disponível: ${formatCurrency(customerData.balance)}`);
-        }
-
-        // Verificar e decrementar estoque de cada produto
-        for (const item of cart) {
-          if (item.product_id) {
-            const productRef = doc(db, "stalls", userDoc!.stall_id!, "products", item.product_id);
-            const productSnap = await tx.get(productRef);
-            if (productSnap.exists()) {
-              const pData = productSnap.data();
-              if (pData.stock !== -1) {
-                if (pData.stock < item.quantity) {
-                  throw new Error(`"${item.name}" não tem estoque suficiente.`);
-                }
-                tx.update(productRef, { stock: increment(-item.quantity) });
-              }
-            }
-          }
-        }
-
-        // Debitar cliente
-        tx.update(customerRef, {
-          balance: customerData.balance - amountCents,
-          updated_at: serverTimestamp(),
-        });
-
-        // Registrar transação
-        const txRef = doc(collection(db, "transactions"));
-        tx.set(txRef, {
-          type: "purchase",
-          amount_cents: amountCents,
-          user_id: customerId,
-          user_name: customerData.name,
-          stall_id: userDoc!.stall_id,
-          stall_name: userDoc!.stall_name || "Barraca",
-          operator_id: user!.uid,
-          operator_name: userDoc!.name,
-          items: cart.map(i => ({
-            product_id: i.product_id,
-            name: i.name,
-            emoji: i.emoji || "",
-            price_cents: i.price_cents,
-            quantity: i.quantity,
-          })),
-          payment_method: "balance",
-          status: "completed",
-          created_at: serverTimestamp(),
-        });
-
-        // Creditar barraca
-        const stallRef = doc(db, "stalls", userDoc!.stall_id!);
-        tx.update(stallRef, { total_sales_cents: increment(amountCents) });
+      const result = await processPayment({
+        qr_payload: decodedText,
+        items: cart.map(i => ({
+          product_id: i.product_id,
+          name: i.name,
+          quantity: i.quantity,
+          unit_price_cents: i.price_cents,
+        })),
+        stall_id: userDoc!.stall_id!,
       });
 
-      setSuccessMessage(
-        `${formatCurrency(amountCents)} cobrado com sucesso! (${cartCount} ite${cartCount > 1 ? "ns" : "m"})`
-      );
+      setSuccessMessage(result.data.message);
       setCart([]);
       playSuccessSound();
       vibrateSuccess();
@@ -284,6 +283,106 @@ export default function VendedorDashboard() {
             </button>
           </div>
         )}
+      </div>
+    );
+  }
+
+  // Tela Ver Saldo (Scanner)
+  if (isCheckingBalance) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-6 space-y-4 animate-slide-up">
+        <header className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center shrink-0">
+            <Wallet className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-[hsl(var(--text-primary))]">Consultar Saldo</h1>
+            <p className="text-[hsl(var(--text-secondary))] text-sm">Escaneie o QR Code do cliente</p>
+          </div>
+        </header>
+
+        {errorMessage && (
+          <div className="p-3 bg-danger/10 border border-danger/20 rounded-xl text-danger text-sm font-medium flex items-center justify-between">
+            {errorMessage}
+            <button onClick={() => setErrorMessage("")}><X className="w-4 h-4" /></button>
+          </div>
+        )}
+
+        <QRScanner onScanSuccess={handleCheckBalanceSuccess} />
+
+        <button onClick={() => setIsCheckingBalance(false)} className="w-full p-4 rounded-xl border-2 border-[hsl(var(--border))] text-[hsl(var(--text-secondary))] font-medium hover:bg-[hsl(var(--card))]/50">
+          Voltar ao PDV
+        </button>
+      </div>
+    );
+  }
+
+  // Tela Resultado Consulta de Saldo
+  if (checkedCustomer) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-6 flex flex-col items-center justify-center min-h-[70vh] text-center animate-fade-in">
+        <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
+          <Wallet className="w-10 h-10 text-primary" />
+        </div>
+        <h2 className="text-xl font-bold text-[hsl(var(--text-primary))] mb-1">{checkedCustomer.name}</h2>
+        <p className="text-[hsl(var(--text-secondary))] mb-6">Saldo disponível para compras</p>
+        
+        <div className="glass-card p-6 w-full mb-8">
+          <span className="text-5xl font-black text-primary">{formatCurrency(checkedCustomer.balance)}</span>
+        </div>
+
+        <button onClick={() => setCheckedCustomer(null)} className="btn-primary w-full py-4 text-lg">
+          Voltar ao PDV
+        </button>
+      </div>
+    );
+  }
+
+  // Tela de Estoque (Vendedor)
+  if (showEstoque) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-6 space-y-4 animate-slide-up pb-32">
+        <header className="flex items-center gap-3">
+          <button onClick={() => setShowEstoque(false)} className="p-2 rounded-full hover:bg-[hsl(var(--card))]">
+            <X className="w-5 h-5 text-[hsl(var(--text-secondary))]" />
+          </button>
+          <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center shrink-0">
+            <Package className="w-5 h-5" />
+          </div>
+          <h1 className="text-xl font-bold text-[hsl(var(--text-primary))]">Estoque</h1>
+        </header>
+
+        <div className="glass-card overflow-hidden">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-[hsl(var(--bg))]/50">
+                <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase">Produto</th>
+                <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Estoque Restante</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[hsl(var(--border))]/30">
+              {products.map((p) => (
+                <tr key={p.id} className="hover:bg-[hsl(var(--bg))]/30 transition-colors">
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-2">
+                      {p.emoji && <span className="text-lg">{p.emoji}</span>}
+                      <span className="font-medium text-[hsl(var(--text-primary))] text-sm">{p.name}</span>
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    {p.stock === -1 ? (
+                      <span className="text-xs font-semibold text-emerald-500">Ilimitado</span>
+                    ) : (
+                      <span className={`text-sm font-bold ${p.stock === 0 ? 'text-danger' : p.stock <= 5 ? 'text-warning' : 'text-[hsl(var(--text-primary))]'}`}>
+                        {p.stock}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }
@@ -382,6 +481,20 @@ export default function VendedorDashboard() {
             <Store className="w-4 h-4" />
             {userDoc.stall_name || "Barraca"}
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={startCheckBalance} 
+            className="flex items-center gap-1.5 text-sm bg-primary/10 text-primary px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors font-medium shadow-sm"
+          >
+            <Wallet className="w-4 h-4" /> Saldo
+          </button>
+          <button 
+            onClick={() => setShowEstoque(true)} 
+            className="flex items-center gap-1.5 text-sm bg-primary/10 text-primary px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors font-medium shadow-sm"
+          >
+            <Package className="w-4 h-4" /> Estoque
+          </button>
         </div>
       </header>
 

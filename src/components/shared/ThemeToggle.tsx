@@ -12,6 +12,7 @@ export default function ThemeToggle() {
       ? "dark"
       : "light";
     const initial = (saved as "light" | "dark") || systemPref;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(initial);
     document.documentElement.classList.toggle("dark", initial === "dark");
   }, []);

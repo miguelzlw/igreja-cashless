@@ -13,15 +13,20 @@ export default function Home() {
   useEffect(() => {
     if (loading) return;
 
-    if (!user) {
+    // Usar flag de proteção para evitar múltiplos redirecionamentos
+    let redirecting = false;
+
+    if (!user && !redirecting) {
+      redirecting = true;
       router.replace("/login");
       return;
     }
 
-    if (userDoc) {
+    if (userDoc && !redirecting) {
+      redirecting = true;
       router.replace(getRoleDashboardPath(userDoc.role));
-    } else if (!userDoc && !loading) {
-      // Se não tem userDoc (por falha passada ou falta de permissão na DB), deslogamos para forçar um novo login que agora cria o doc
+    } else if (!userDoc && !loading && !redirecting) {
+      redirecting = true;
       import("@/lib/firebase/auth").then(({ signOut }) => {
         signOut().then(() => router.replace("/login"));
       });

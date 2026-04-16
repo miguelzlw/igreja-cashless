@@ -10,7 +10,7 @@ import type { UserDoc } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils/formatters";
 import {
   ScanLine, Wallet, CheckCircle2, Banknote, QrCode as QrCodeIcon,
-  X, CreditCard, Loader2, ArrowLeft, Camera, Printer, Plus
+  X, CreditCard, Loader2, ArrowLeft, Camera, Printer
 } from "lucide-react";
 import QRScanner from "@/components/shared/QRScanner";
 import { playSuccessSound, playErrorSound } from "@/lib/utils/sounds";
@@ -113,7 +113,7 @@ export default function CaixaDashboard() {
         });
       });
 
-      setSuccessMessage(`Recarga de ${formatCurrency(amountCents)} aplicada!`);
+      setSuccessMessage(`Recarga de ${formatCurrency(amountCents)} aplicada! Saldo atual: ${formatCurrency(customer.data.balance + amountCents)}`);
       playSuccessSound();
       vibrateSuccess();
       setCustomer(prev =>
@@ -227,7 +227,7 @@ export default function CaixaDashboard() {
               </p>
               <button onClick={() => setIsScanning(true)} className="btn-primary w-full shadow-lg shadow-primary/20 flex items-center gap-2 justify-center py-4 text-lg">
                 <Camera className="w-6 h-6" />
-                Iniciar Leitor
+                Ver Saldo / Nova Recarga
               </button>
             </div>
           )}

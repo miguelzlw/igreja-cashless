@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 
 interface FichaData {
   id: string;
@@ -16,6 +17,7 @@ function FichasPrinter() {
     try {
       const data = searchParams.get("data");
       if (data) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setFichas(JSON.parse(decodeURIComponent(data)));
       }
     } catch {
@@ -68,7 +70,16 @@ function FichasPrinter() {
         .ficha-event { font-size: 11px; color: #6b7280; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
         .ficha-title { font-size: 14px; font-weight: 800; color: #1f2937; }
         .ficha-code { font-size: 20px; font-weight: 900; color: #7c3aed; letter-spacing: 0.1em; font-family: monospace; }
-        .ficha-qr { width: 80px; height: 80px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-center: center; font-size: 10px; color: #9ca3af; padding: 4px; }
+        .ficha-qr { 
+          width: 80px; 
+          height: 80px; 
+          background: white; 
+          border-radius: 8px; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center; 
+          padding: 4px; 
+        }
         .ficha-hint { font-size: 9px; color: #9ca3af; }
         .print-btn { position: fixed; bottom: 20px; right: 20px; background: #7c3aed; color: white; border: none; padding: 12px 24px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }
       `}</style>
@@ -79,7 +90,7 @@ function FichasPrinter() {
             {fichas.length} Fichas Geradas
           </h1>
           <p style={{ color: '#6b7280', fontSize: 13 }}>
-            Clique em "Imprimir" para imprimir em folhas A4 (6 por folha)
+            Clique em &quot;Imprimir&quot; para imprimir em folhas A4 (6 por folha)
           </p>
         </div>
         <button onClick={() => window.print()} className="print-btn">
@@ -94,12 +105,11 @@ function FichasPrinter() {
             <p className="ficha-title">FICHA CASHLESS</p>
             <p className="ficha-code">#{ficha.code}</p>
             <div className="ficha-qr">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(`${ficha.id}:temp_${ficha.id}`)}`}
-                alt={`QR ${ficha.code}`}
-                width={72}
-                height={72}
-                style={{ borderRadius: 4 }}
+              <QRCodeSVG
+                value={`${ficha.id}:temp_${ficha.id}`}
+                size={72}
+                level="M"
+                includeMargin={false}
               />
             </div>
             <p className="ficha-hint">Apresente ao caixa para recarregar</p>
@@ -117,5 +127,3 @@ export default function PrintFichasPage() {
     </Suspense>
   );
 }
-
-

@@ -53,6 +53,8 @@ export interface ProductDoc {
   price_cents: number; // em centavos
   stock: number;       // -1 = estoque ilimitado
   active: boolean;
+  units_sold?: number; // Total de unidades vendidas
+  revenue_cents?: number; // Faturamento gerado por este produto
   created_at: Date;
   updated_at?: Date;
 }

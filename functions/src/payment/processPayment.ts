@@ -3,6 +3,7 @@ import { db, REGION } from "../utils/admin";
 import { Errors } from "../utils/errors";
 import { validateUid, validateSaleItems } from "../utils/validation";
 import { parseAndVerifyQR } from "../utils/hmac";
+import { checkRateLimit } from "../security/rateLimiter";
 import * as admin from "firebase-admin";
 
 /**
@@ -20,6 +21,9 @@ export const processPayment = onCall(
     }
 
     const operatorId = request.auth.uid;
+
+    // 1a. Rate limiting: máximo 60 vendas por minuto por operador
+    await checkRateLimit(`payment_${operatorId}`, 60, 60_000);
     const {
       qr_payload,
       items,

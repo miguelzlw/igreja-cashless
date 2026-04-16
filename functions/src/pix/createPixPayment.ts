@@ -2,6 +2,7 @@ import { onCall } from "firebase-functions/v2/https";
 import { db, REGION, EVENT_CONFIG } from "../utils/admin";
 import { Errors } from "../utils/errors";
 import { validateAmountCents } from "../utils/validation";
+import { checkRateLimit } from "../security/rateLimiter";
 import { defineString } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 
@@ -24,6 +25,10 @@ export const createPixPayment = onCall(
     }
 
     const userId = request.auth.uid;
+
+    // Rate limiting: máximo 5 PIX criados por minuto por usuário
+    await checkRateLimit(`pix_${userId}`, 5, 60_000);
+
     const { amount_cents } = request.data as { amount_cents: number };
 
     const amountCents = validateAmountCents(amount_cents, "amount_cents");

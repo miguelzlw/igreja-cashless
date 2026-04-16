@@ -2,6 +2,7 @@ import { onCall } from "firebase-functions/v2/https";
 import { db, REGION } from "../utils/admin";
 import { Errors } from "../utils/errors";
 import { validateUid, validateString } from "../utils/validation";
+import { checkRateLimit } from "../security/rateLimiter";
 import * as admin from "firebase-admin";
 
 /**
@@ -17,6 +18,10 @@ export const processRefund = onCall(
     }
 
     const operatorId = request.auth.uid;
+
+    // Rate limiting: máximo 20 estornos por minuto por operador
+    await checkRateLimit(`refund_${operatorId}`, 20, 60_000);
+
     const { transaction_id, reason } = request.data as {
       transaction_id: string;
       reason?: string;

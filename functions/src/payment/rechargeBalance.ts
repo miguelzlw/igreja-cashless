@@ -2,6 +2,7 @@ import { onCall } from "firebase-functions/v2/https";
 import { db, REGION, EVENT_CONFIG } from "../utils/admin";
 import { Errors } from "../utils/errors";
 import { validateAmountCents, validateUid } from "../utils/validation";
+import { checkRateLimit } from "../security/rateLimiter";
 import * as admin from "firebase-admin";
 
 /**
@@ -23,6 +24,9 @@ export const rechargeBalance = onCall(
       user_id: string;
       amount_cents: number;
     };
+
+    // 1a. Rate limiting: máximo 30 recargas por minuto por operador
+    await checkRateLimit(`recharge_${operatorId}`, 30, 60_000);
 
     // 2. Validar
     const targetUserId = validateUid(user_id, "user_id");

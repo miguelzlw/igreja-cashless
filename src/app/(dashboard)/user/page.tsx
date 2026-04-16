@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { db } from "@/lib/firebase/config";
-import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, getDocs } from "firebase/firestore";
 import type { ProductDoc, StallDoc } from "@/lib/types";
 import UserBalanceCard from "@/components/user/UserBalanceCard";
 import QRCodeModal from "@/components/user/QRCodeModal";
@@ -25,36 +25,34 @@ export default function UserDashboard() {
   const [expandedStall, setExpandedStall] = useState<string | null>(null);
 
   useEffect(() => {
-    // Carrega todas as barracas ativas
     const qStalls = query(collection(db, "stalls"), where("is_active", "==", true));
-    const unsub = onSnapshot(qStalls, async (stallSnap) => {
+    const unsubStalls = onSnapshot(qStalls, async (stallSnap) => {
       const stallsData: StallWithProducts[] = [];
 
       for (const stallDoc of stallSnap.docs) {
         const stallData = stallDoc.data() as StallDoc;
-        // Carrega produtos de cada barraca
+        // Carrega produtos de cada barraca (apenas ativos)
         const qProducts = query(
           collection(db, "stalls", stallDoc.id, "products"),
-          where("active", "==", true),
           orderBy("name", "asc")
         );
-        const productsSnap = await new Promise<ProductDoc[]>(resolve => {
-          onSnapshot(qProducts, snap => {
-            resolve(snap.docs.map(d => ({ id: d.id, ...d.data() } as ProductDoc)));
-          });
-        });
+        
+        const productsSnap = await getDocs(qProducts);
+        const activeProducts = productsSnap.docs
+            .map(d => ({ id: d.id, ...d.data() } as ProductDoc))
+            .filter(p => p.active);
 
         stallsData.push({
           id: stallDoc.id,
           ...stallData,
-          products: productsSnap,
+          products: activeProducts,
         });
       }
       setMenu(stallsData);
       setMenuLoading(false);
     }, () => setMenuLoading(false));
 
-    return () => unsub();
+    return () => unsubStalls();
   }, []);
 
   if (!user || !userDoc) return null;

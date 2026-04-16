@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { Copy, Camera, Loader2 } from "lucide-react";
+import { Copy, Camera, Loader2, RefreshCw } from "lucide-react";
 
 interface QRScannerProps {
   onScanSuccess: (decodedText: string) => void;
@@ -15,25 +15,26 @@ type CameraStatus = 'pending' | 'granted' | 'denied';
 export default function QRScanner({ onScanSuccess, onScanError, pauseOnScan = true }: QRScannerProps) {
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('pending');
   const [isScanning, setIsScanning] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const regionId = "qr-reader";
 
   useEffect(() => {
-    // Inicializar o scanner apenas uma vez
-    if (!scannerRef.current) {
-      scannerRef.current = new Html5Qrcode(regionId);
-    }
-
-    const scanner = scannerRef.current;
+    let isMounted = true;
+    const scanner = new Html5Qrcode(regionId);
+    scannerRef.current = scanner;
 
     const startScanning = async () => {
       try {
+        setCameraStatus('pending');
         const hasCameras = await Html5Qrcode.getCameras();
+        
         if (hasCameras && hasCameras.length > 0) {
+          if (!isMounted) return;
           setCameraStatus('granted');
           
           await scanner.start(
-            { facingMode: "environment" }, // Preferir câmera traseira
+            { facingMode: "environment" },
             {
               fps: 10,
               qrbox: { width: 250, height: 250 },
@@ -41,10 +42,14 @@ export default function QRScanner({ onScanSuccess, onScanError, pauseOnScan = tr
             },
             (decodedText) => {
               if (pauseOnScan) {
-                scanner.pause();
+                if (scanner.isScanning) {
+                   scanner.pause();
+                }
                 setTimeout(() => {
                   onScanSuccess(decodedText);
-                  scanner.resume();
+                  if (scannerRef.current && scannerRef.current.isScanning) {
+                     scannerRef.current.resume();
+                  }
                 }, 500);
               } else {
                 onScanSuccess(decodedText);
@@ -54,13 +59,13 @@ export default function QRScanner({ onScanSuccess, onScanError, pauseOnScan = tr
               if (onScanError) onScanError(errorMessage);
             }
           );
-          setIsScanning(true);
+          if (isMounted) setIsScanning(true);
         } else {
-          setCameraStatus('denied');
+          if (isMounted) setCameraStatus('denied');
         }
       } catch (err) {
         console.error("Erro ao acessar câmera:", err);
-        setCameraStatus('denied');
+        if (isMounted) setCameraStatus('denied');
       }
     };
 
@@ -68,12 +73,19 @@ export default function QRScanner({ onScanSuccess, onScanError, pauseOnScan = tr
 
     // Limpeza ao desmontar
     return () => {
-      if (scanner && scanner.isScanning) {
-        scanner.stop().catch(console.error);
+      isMounted = false;
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().then(() => {
+          scannerRef.current?.clear();
+        }).catch(console.error);
         setIsScanning(false);
       }
     };
-  }, [onScanSuccess, onScanError, pauseOnScan]);
+  }, [onScanSuccess, onScanError, pauseOnScan, retryCount]);
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+  };
 
   if (cameraStatus === 'denied') {
     return (
@@ -84,9 +96,13 @@ export default function QRScanner({ onScanSuccess, onScanError, pauseOnScan = tr
         <h3 className="text-lg font-bold text-[hsl(var(--text-primary))] mb-2">
           Permissão Negada
         </h3>
-        <p className="text-sm text-[hsl(var(--text-secondary))] mb-4">
-          Não conseguimos acessar sua câmera. Verifique as permissões do seu navegador para continuar.
+        <p className="text-sm text-[hsl(var(--text-secondary))] mb-6">
+          Não conseguimos acessar sua câmera. Verifique as permissões do seu navegador e tente novamente.
         </p>
+        <button onClick={handleRetry} className="btn-primary flex items-center justify-center gap-2 px-6 py-3 w-full">
+          <RefreshCw className="w-4 h-4" />
+          Tentar Novamente
+        </button>
       </div>
     );
   }

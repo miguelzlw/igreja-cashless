@@ -82,7 +82,7 @@ export default function StallSalesFeed({ stallId }: StallSalesFeedProps) {
                 </p>
                 <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--text-muted))] mt-1">
                   <Clock className="w-3 h-3" />
-                  {tx.created_at != null ? (typeof (tx.created_at as any)?.toDate === 'function' ? formatDate((tx.created_at as any).toDate()) : formatDate(new Date(tx.created_at as string))) : ''}
+                  {tx.created_at != null ? (typeof (tx.created_at as { toDate?: () => Date })?.toDate === 'function' ? formatDate((tx.created_at as { toDate: () => Date }).toDate()) : formatDate(new Date(tx.created_at as string))) : ''}
                   <span className="mx-1">•</span>
                   Vendedor: {tx.operator_name.split(" ")[0]}
                 </div>

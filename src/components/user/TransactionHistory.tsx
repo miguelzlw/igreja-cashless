@@ -3,7 +3,7 @@ import { collection, query, where, orderBy, getDocs, limit } from "firebase/fire
 import { db } from "@/lib/firebase/config";
 import { formatCurrency, formatDate } from "@/lib/utils/formatters";
 import type { Transaction } from "@/lib/types";
-import { ArrowDownRight, ArrowUpRight, Clock, Store } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Clock } from "lucide-react";
 
 interface TransactionHistoryProps {
   userId: string;
@@ -92,6 +92,7 @@ export default function TransactionHistory({ userId }: TransactionHistoryProps) 
                 </p>
                 <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--text-muted))] mt-1">
                   <Clock className="w-3 h-3" />
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {tx.created_at != null ? (typeof (tx.created_at as any)?.toDate === 'function' ? formatDate((tx.created_at as any).toDate()) : formatDate(new Date(tx.created_at as string))) : ''}
                 </div>
               </div>

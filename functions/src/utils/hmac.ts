@@ -7,7 +7,6 @@ import { defineString } from "firebase-functions/params";
  */
 const hmacSecret = defineString("HMAC_SECRET", {
   description: "Segredo HMAC para assinatura de QR Codes",
-  default: "dev-hmac-secret-change-me-in-production",
 });
 
 /**

@@ -42,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Guard: se Firebase não está configurado (API key ausente), não tenta autenticar
     if (!auth || typeof auth.onAuthStateChanged !== "function") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({
         user: null,
         userDoc: null,

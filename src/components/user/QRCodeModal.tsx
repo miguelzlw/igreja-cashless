@@ -9,7 +9,7 @@ interface QRCodeModalProps {
   userName: string;
 }
 
-export default function QRCodeModal({ isOpen, onClose, qrPayload, userName }: QRCodeModalProps) {
+export default function QRCodeModal({ isOpen, onClose, qrPayload }: QRCodeModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Fecha o modal ao pressionar ESC
