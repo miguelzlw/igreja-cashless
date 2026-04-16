@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { db } from "@/lib/firebase/config";
+import { db, functions } from "@/lib/firebase/config";
 import {
-  doc, getDoc, runTransaction, collection, serverTimestamp, writeBatch
+  doc, getDoc, collection, serverTimestamp, writeBatch
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import type { UserDoc } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils/formatters";
 import {
@@ -88,32 +89,14 @@ export default function CaixaDashboard() {
     setSuccessMessage("");
 
     try {
-      await runTransaction(db, async (tx) => {
-        const customerRef = doc(db, "users", customer.uid);
-        const customerSnap = await tx.get(customerRef);
-        if (!customerSnap.exists()) throw new Error("Cliente não encontrado.");
-        const customerData = customerSnap.data();
+      const rechargeBalance = httpsCallable<
+        { user_id: string; amount_cents: number },
+        { success: boolean; message: string }
+      >(functions, "rechargeBalance");
 
-        tx.update(customerRef, {
-          balance: customerData.balance + amountCents,
-          updated_at: serverTimestamp(),
-        });
+      await rechargeBalance({ user_id: customer.uid, amount_cents: amountCents });
 
-        const txRef = doc(collection(db, "transactions"));
-        tx.set(txRef, {
-          type: "recharge",
-          amount_cents: amountCents,
-          user_id: customer.uid,
-          user_name: customerData.name,
-          operator_id: user!.uid,
-          operator_name: userDoc?.name || "Caixa",
-          payment_method: "cash",
-          status: "completed",
-          created_at: serverTimestamp(),
-        });
-      });
-
-      setSuccessMessage(`Recarga de ${formatCurrency(amountCents)} aplicada! Saldo atual: ${formatCurrency(customer.data.balance + amountCents)}`);
+      setSuccessMessage(`Recarga de ${formatCurrency(amountCents)} aplicada!`);
       playSuccessSound();
       vibrateSuccess();
       setCustomer(prev =>

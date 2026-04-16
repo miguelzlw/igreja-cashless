@@ -21,12 +21,17 @@ service cloud.firestore {
       allow update: if
         hasRole('admin') ||
         hasRole('caixa') ||
+        // Gerente pode vincular/desvincular vendedores da SUA barraca
+        (hasRole('gerente_barraca') &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['stall_id', 'stall_name', 'role']) &&
+          request.resource.data.role in ['vendedor', 'user'] &&
+          request.resource.data.balance == resource.data.balance) ||
         // Usuário comum só atualiza campos que não sejam role e balance
         (isOwner(userId) &&
           request.resource.data.balance == resource.data.balance &&
           request.resource.data.role == resource.data.role);
-      // Saldo e role só podem ser alterados via Cloud Functions (admin SDK),
-      // nunca diretamente pelo cliente vendedor/gerente.
+      // Saldo só pode ser alterado via Cloud Functions (admin SDK).
     }
 
     // ── Transações ──────────────────────────────────────────

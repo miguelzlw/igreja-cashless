@@ -5,6 +5,7 @@ import {
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   updateProfile,
+  sendPasswordResetEmail,
   type User,
 } from "firebase/auth";
 import { auth } from "./config";
@@ -70,6 +71,10 @@ export async function signOut(): Promise<void> {
   await firebaseSignOut(auth);
 }
 
+export async function resetPassword(email: string): Promise<void> {
+  await sendPasswordResetEmail(auth, email);
+}
+
 export function getFirebaseErrorMessage(code: string): string {
   const messages: Record<string, string> = {
     "auth/email-already-in-use": "Este e-mail já está cadastrado.",
@@ -83,6 +88,7 @@ export function getFirebaseErrorMessage(code: string): string {
     "auth/too-many-requests": "Muitas tentativas. Tente novamente mais tarde.",
     "auth/popup-closed-by-user": "Login cancelado.",
     "auth/network-request-failed": "Erro de conexão. Verifique sua internet.",
+    "auth/missing-email": "Informe um e-mail válido.",
   };
   return messages[code] || "Ocorreu um erro. Tente novamente.";
 }

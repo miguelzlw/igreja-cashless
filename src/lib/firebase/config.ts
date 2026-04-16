@@ -32,17 +32,19 @@ if (typeof window !== "undefined" && firebaseConfig.apiKey) {
     db = getFirestore(app);
     functions = getFunctions(app, process.env.NEXT_PUBLIC_FIREBASE_REGION || "southamerica-east1");
 
-    // Conecta aos emuladores em dev SE EXPLICITAMENTE CONFIGURADO
+    // Conecta o emulador de Functions em dev SE EXPLICITAMENTE CONFIGURADO
+    // Auth e Firestore usam produção para que login e dados reais funcionem normalmente.
     if (process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === "true") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const win = window as any;
       if (!win.__FIREBASE_EMULATORS_CONNECTED__) {
         try {
-          connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
-          connectFirestoreEmulator(db, "localhost", 8080);
-          connectFunctionsEmulator(functions, "localhost", 5001);
+          // Usa o mesmo host pelo qual o app foi acessado, para funcionar tanto
+          // no PC (localhost) quanto no celular via IP da rede local.
+          const emulatorHost = window.location.hostname;
+          connectFunctionsEmulator(functions, emulatorHost, 5001);
           win.__FIREBASE_EMULATORS_CONNECTED__ = true;
-          console.log("[Firebase] Conectado aos Emuladores Locais");
+          console.log(`[Firebase] Functions conectadas ao emulador: ${emulatorHost}:5001`);
         } catch {
           // Fallback
         }

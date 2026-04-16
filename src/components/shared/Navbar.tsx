@@ -22,7 +22,6 @@ function getNavItems(role: UserRole | undefined): NavItem[] {
         { label: "Dashboard", href: "/admin", icon: <ChartIcon /> },
         { label: "Barracas", href: "/admin/barracas", icon: <StoreIcon /> },
         { label: "Usuários", href: "/admin/usuarios", icon: <UsersIcon /> },
-        { label: "Config", href: "/admin/config", icon: <GearIcon /> },
       ];
     case "caixa":
       return [

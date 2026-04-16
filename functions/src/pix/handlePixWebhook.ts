@@ -11,7 +11,8 @@ const mpAccessToken = defineString("MP_ACCESS_TOKEN", {
 });
 
 const mpWebhookSecret = defineString("MP_WEBHOOK_SECRET", {
-  description: "Mercado Pago Webhook Secret para verificação de assinatura",
+  description: "Mercado Pago Webhook Secret para verificação de assinatura. Configure via: firebase functions:secrets:set MP_WEBHOOK_SECRET",
+  default: "dev-default-troque-em-producao",
 });
 
 /**

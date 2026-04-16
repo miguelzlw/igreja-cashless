@@ -520,38 +520,69 @@ export default function VendedorDashboard() {
           {products.map(product => {
             const inCart = cart.find(i => i.product_id === product.id);
             const outOfStock = product.stock === 0;
+            const qty = inCart?.quantity ?? 0;
             return (
-              <button
+              <div
                 key={product.id}
-                onClick={() => addToCart(product)}
-                disabled={outOfStock}
-                className={`relative glass-card p-4 flex flex-col items-center justify-center text-center rounded-2xl border transition-all active:scale-95 min-h-[120px] ${
+                className={`relative glass-card p-3 flex flex-col items-center justify-center text-center rounded-2xl border transition-all min-h-[130px] ${
                   outOfStock
-                    ? "opacity-50 cursor-not-allowed border-[hsl(var(--border))]"
+                    ? "opacity-50 border-[hsl(var(--border))]"
                     : inCart
                     ? "border-primary bg-primary/5 shadow-lg shadow-primary/10"
-                    : "border-[hsl(var(--border))] hover:border-primary/50"
+                    : "border-[hsl(var(--border))]"
                 }`}
               >
-                {inCart && (
-                  <span className="absolute top-2 right-2 w-5 h-5 bg-primary rounded-full text-xs text-white font-bold flex items-center justify-center">
-                    {inCart.quantity}
-                  </span>
-                )}
                 {outOfStock && (
                   <span className="absolute top-2 left-2 text-xs bg-danger/10 text-danger px-1.5 py-0.5 rounded font-medium">
                     Esgotado
                   </span>
                 )}
-                {product.emoji && (
-                  <span className="text-4xl mb-2">{product.emoji}</span>
+
+                {/* Área clicável central para adicionar */}
+                <button
+                  onClick={() => addToCart(product)}
+                  disabled={outOfStock}
+                  className="flex flex-col items-center w-full active:scale-95 transition-transform"
+                >
+                  {product.emoji && (
+                    <span className="text-4xl mb-1">{product.emoji}</span>
+                  )}
+                  <p className="font-bold text-[hsl(var(--text-primary))] text-sm leading-tight">{product.name}</p>
+                  <p className="text-primary font-black mt-0.5">{formatCurrency(product.price_cents)}</p>
+                  {product.stock !== -1 && product.stock > 0 && product.stock <= 5 && (
+                    <p className="text-xs text-warning mt-0.5">Restam {product.stock}</p>
+                  )}
+                </button>
+
+                {/* Controles de quantidade */}
+                {qty > 0 ? (
+                  <div className="flex items-center gap-2 mt-2" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => changeQty(product.id!, -1)}
+                      className="w-7 h-7 rounded-full bg-[hsl(var(--bg))] border border-[hsl(var(--border))] flex items-center justify-center hover:border-danger hover:text-danger transition-colors"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="w-6 text-center font-black text-primary text-sm">{qty}</span>
+                    <button
+                      onClick={() => addToCart(product)}
+                      disabled={product.stock !== -1 && qty >= product.stock}
+                      className="w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary/80 disabled:opacity-40 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  !outOfStock && (
+                    <button
+                      onClick={() => addToCart(product)}
+                      className="mt-2 w-7 h-7 rounded-full bg-primary/10 text-primary border border-primary/30 flex items-center justify-center hover:bg-primary/20 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  )
                 )}
-                <p className="font-bold text-[hsl(var(--text-primary))] text-sm leading-tight">{product.name}</p>
-                <p className="text-primary font-black mt-1">{formatCurrency(product.price_cents)}</p>
-                {product.stock !== -1 && product.stock > 0 && product.stock <= 5 && (
-                  <p className="text-xs text-warning mt-0.5">Restam {product.stock}</p>
-                )}
-              </button>
+              </div>
             );
           })}
         </div>

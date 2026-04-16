@@ -6,7 +6,8 @@ import { defineString } from "firebase-functions/params";
  * firebase functions:secrets:set HMAC_SECRET
  */
 const hmacSecret = defineString("HMAC_SECRET", {
-  description: "Segredo HMAC para assinatura de QR Codes",
+  description: "Segredo HMAC para assinatura de QR Codes. Troque em produção via: firebase functions:secrets:set HMAC_SECRET",
+  default: "dev-default-troque-em-producao",
 });
 
 /**
@@ -17,6 +18,9 @@ const hmacSecret = defineString("HMAC_SECRET", {
  */
 export function generateHMAC(uid: string): string {
   const secret = hmacSecret.value();
+  if (!secret) {
+    throw new Error("HMAC_SECRET não configurado. Execute: firebase functions:secrets:set HMAC_SECRET");
+  }
   return crypto
     .createHmac("sha256", secret)
     .update(uid)

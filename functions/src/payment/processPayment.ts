@@ -24,6 +24,7 @@ export const processPayment = onCall(
 
     // 1a. Rate limiting: máximo 60 vendas por minuto por operador
     await checkRateLimit(`payment_${operatorId}`, 60, 60_000);
+
     const {
       qr_payload,
       items,
@@ -106,9 +107,47 @@ export const processPayment = onCall(
         throw Errors.INSUFFICIENT_BALANCE(totalCents, customerData.balance);
       }
 
+      const now = admin.firestore.FieldValue.serverTimestamp();
+
+      // Verificar e decrementar estoque de cada produto
+      for (const item of validatedItems) {
+        const productRef = db
+          .collection("stalls")
+          .doc(stallId)
+          .collection("products")
+          .doc(item.product_id);
+        const productSnap = await tx.get(productRef);
+
+        if (!productSnap.exists) {
+          throw Errors.NOT_FOUND(`Produto "${item.name}"`);
+        }
+
+        const productData = productSnap.data()!;
+
+        if (productData.stock !== -1) {
+          if (productData.stock < item.quantity) {
+            throw Errors.INVALID_ARGUMENT(
+              "items",
+              `"${item.name}" não tem estoque suficiente (disponível: ${productData.stock})`
+            );
+          }
+          tx.update(productRef, {
+            stock: admin.firestore.FieldValue.increment(-item.quantity),
+            units_sold: admin.firestore.FieldValue.increment(item.quantity),
+            revenue_cents: admin.firestore.FieldValue.increment(item.quantity * item.unit_price_cents),
+            updated_at: now,
+          });
+        } else {
+          tx.update(productRef, {
+            units_sold: admin.firestore.FieldValue.increment(item.quantity),
+            revenue_cents: admin.firestore.FieldValue.increment(item.quantity * item.unit_price_cents),
+            updated_at: now,
+          });
+        }
+      }
+
       // Criar transação
       const txRef = db.collection("transactions").doc();
-      const now = admin.firestore.FieldValue.serverTimestamp();
 
       tx.set(txRef, {
         type: "purchase",

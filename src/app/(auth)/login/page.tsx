@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signInWithEmail, signInWithGoogle, getFirebaseErrorMessage } from "@/lib/firebase/auth";
+import { signInWithEmail, signInWithGoogle, resetPassword, getFirebaseErrorMessage } from "@/lib/firebase/auth";
 import { useAuth } from "@/lib/hooks/useAuth";
 
 export default function LoginPage() {
@@ -12,6 +12,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState("");
+  const [resetError, setResetError] = useState("");
   const router = useRouter();
   const { user } = useAuth();
 
@@ -141,6 +146,15 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setShowResetModal(true); setResetEmail(email); setResetSuccess(""); setResetError(""); }}
+                  className="text-xs text-primary hover:text-primary-hover font-medium transition-colors"
+                >
+                  Esqueceu a senha?
+                </button>
+              </div>
             </div>
 
             <button
@@ -211,6 +225,85 @@ export default function LoginPage() {
           Paróquia São João Paulo II
         </p>
       </div>
+
+      {/* Modal Recuperar Senha */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !resetLoading && setShowResetModal(false)} />
+          <div className="relative w-full max-w-sm glass-card p-6 space-y-4 animate-slide-up shadow-2xl rounded-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-[hsl(var(--text-primary))]">Recuperar Senha</h3>
+              <button
+                onClick={() => setShowResetModal(false)}
+                disabled={resetLoading}
+                className="p-1.5 rounded-full hover:bg-[hsl(var(--bg))] text-[hsl(var(--text-secondary))]"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="text-sm text-[hsl(var(--text-secondary))]">
+              Informe seu e-mail de cadastro. Enviaremos um link para você redefinir sua senha.
+            </p>
+
+            {resetError && (
+              <p className="text-sm text-danger bg-danger/10 p-2 rounded-lg">{resetError}</p>
+            )}
+            {resetSuccess && (
+              <p className="text-sm text-emerald-500 bg-emerald-500/10 p-2 rounded-lg flex items-center gap-2">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                {resetSuccess}
+              </p>
+            )}
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!resetEmail.trim()) return;
+              setResetLoading(true);
+              setResetError("");
+              setResetSuccess("");
+              try {
+                await resetPassword(resetEmail.trim());
+                setResetSuccess("E-mail enviado! Verifique sua caixa de entrada (e spam).");
+              } catch (err: unknown) {
+                const firebaseError = err as { code?: string };
+                setResetError(getFirebaseErrorMessage(firebaseError.code || ""));
+              } finally {
+                setResetLoading(false);
+              }
+            }} className="space-y-3">
+              <input
+                type="email"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                placeholder="seu@email.com"
+                required
+                className="input"
+                disabled={resetLoading}
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={resetLoading || !resetEmail.trim()}
+                className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+              >
+                {resetLoading ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                )}
+                Enviar Link de Recuperação
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
