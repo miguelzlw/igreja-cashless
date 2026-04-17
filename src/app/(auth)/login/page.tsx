@@ -146,15 +146,6 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => { setShowResetModal(true); setResetEmail(email); setResetSuccess(""); setResetError(""); }}
-                  className="text-xs text-primary hover:text-primary-hover font-medium transition-colors"
-                >
-                  Esqueceu a senha?
-                </button>
-              </div>
             </div>
 
             <button
@@ -209,16 +200,25 @@ export default function LoginPage() {
             Entrar com Google
           </button>
 
-          {/* Register link */}
-          <p className="text-center text-sm text-[hsl(var(--text-secondary))] mt-6">
-            Não tem conta?{" "}
-            <Link
-              href="/register"
-              className="text-primary font-semibold hover:text-primary-hover transition-colors"
+          {/* Actions */}
+          <div className="flex flex-col items-center gap-4 mt-6">
+            <button
+              type="button"
+              onClick={() => { setShowResetModal(true); setResetEmail(email); setResetSuccess(""); setResetError(""); }}
+              className="text-sm font-semibold text-[hsl(var(--text-secondary))] hover:text-primary transition-colors underline-offset-4 hover:underline"
             >
-              Criar conta
-            </Link>
-          </p>
+              Esqueceu sua senha?
+            </button>
+            <p className="text-sm text-[hsl(var(--text-secondary))]">
+              Não tem conta?{" "}
+              <Link
+                href="/register"
+                className="text-primary font-semibold hover:text-primary-hover transition-colors"
+              >
+                Criar conta
+              </Link>
+            </p>
+          </div>
         </div>
 
         <p className="text-center text-xs text-[hsl(var(--text-muted))] mt-6">
