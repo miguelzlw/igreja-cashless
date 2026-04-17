@@ -156,10 +156,13 @@ export default function VendedorDashboard() {
 
     try {
       const [customerId, providedHmac] = parts;
-      const customerRef = doc(db, "users", customerId);
+      const isTemp = providedHmac.startsWith("temp_");
+
+      const collectionName = isTemp ? "temp_accounts" : "users";
+      const customerRef = doc(db, collectionName, customerId);
       const customerSnap = await getDoc(customerRef);
 
-      if (!customerSnap.exists()) throw new Error("Cliente não encontrado.");
+      if (!customerSnap.exists()) throw new Error(isTemp ? "Ficha não encontrada." : "Cliente não encontrado.");
       const customerData = customerSnap.data();
 
       // Verificar HMAC contra o valor armazenado no documento do usuário
@@ -167,7 +170,8 @@ export default function VendedorDashboard() {
         throw new Error("QR Code inválido ou adulterado.");
       }
 
-      setCheckedCustomer({ name: customerData.name, balance: customerData.balance });
+      const displayName = isTemp ? `Ficha #${customerData.code}` : customerData.name;
+      setCheckedCustomer({ name: displayName, balance: customerData.balance });
       playSuccessSound();
       vibrateSuccess();
     } catch (err: unknown) {

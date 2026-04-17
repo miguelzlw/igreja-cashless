@@ -20,9 +20,10 @@ export const rechargeBalance = onCall(
     }
 
     const operatorId = request.auth.uid;
-    const { user_id, amount_cents } = request.data as {
+    const { user_id, amount_cents, is_temp = false } = request.data as {
       user_id: string;
       amount_cents: number;
+      is_temp?: boolean;
     };
 
     // 1a. Rate limiting: máximo 30 recargas por minuto por operador
@@ -55,12 +56,13 @@ export const rechargeBalance = onCall(
         throw Errors.PERMISSION_DENIED("realizar recargas");
       }
 
-      // Verificar cliente
-      const targetRef = db.collection("users").doc(targetUserId);
+      // Verificar cliente ou ficha
+      const collectionName = is_temp ? "temp_accounts" : "users";
+      const targetRef = db.collection(collectionName).doc(targetUserId);
       const targetSnap = await tx.get(targetRef);
 
       if (!targetSnap.exists) {
-        throw Errors.NOT_FOUND("Usuário");
+        throw Errors.NOT_FOUND(is_temp ? "Ficha Físico" : "Usuário");
       }
 
       const targetData = targetSnap.data()!;
@@ -72,7 +74,7 @@ export const rechargeBalance = onCall(
         type: "recharge",
         amount_cents: amountCents,
         user_id: targetUserId,
-        user_name: targetData.name,
+        user_name: is_temp ? `Ficha #${targetData.code}` : targetData.name,
         operator_id: operatorId,
         operator_name: operatorData.name,
         payment_method: "manual",

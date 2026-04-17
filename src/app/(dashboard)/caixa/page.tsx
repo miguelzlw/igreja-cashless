@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { db, functions } from "@/lib/firebase/config";
 import {
-  doc, getDoc, collection, serverTimestamp, writeBatch
+  doc, getDoc, getDocs, collection, serverTimestamp, writeBatch
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import type { UserDoc } from "@/lib/types";
@@ -27,7 +27,7 @@ export default function CaixaDashboard() {
   const [scanError, setScanError] = useState("");
 
   // Cliente selecionado
-  const [customer, setCustomer] = useState<{ uid: string; data: UserDoc; rawPayload: string } | null>(null);
+  const [customer, setCustomer] = useState<{ uid: string; data: UserDoc; rawPayload: string; is_temp?: boolean } | null>(null);
   const [isLoadingCustomer, setIsLoadingCustomer] = useState(false);
 
   // Recarga
@@ -53,16 +53,22 @@ export default function CaixaDashboard() {
       return;
     }
 
-    const uid = parts[0];
+    const [uid, hmac] = parts;
+    const isTemp = hmac?.startsWith("temp_");
+
     setIsScanning(false);
     setIsLoadingCustomer(true);
     setScanError("");
 
     try {
-      const docRef = doc(db, "users", uid);
+      const collectionName = isTemp ? "temp_accounts" : "users";
+      const docRef = doc(db, collectionName, uid);
       const snap = await getDoc(docRef);
-      if (!snap.exists()) throw new Error("Cliente não encontrado.");
-      setCustomer({ uid, data: snap.data() as UserDoc, rawPayload: decodedText });
+      if (!snap.exists()) throw new Error(isTemp ? "Ficha não encontrada." : "Cliente não encontrado.");
+      
+      const data = snap.data();
+      const customerData = isTemp ? { ...data, name: `Ficha #${data.code}` } : data;
+      setCustomer({ uid, data: customerData as UserDoc, rawPayload: decodedText, is_temp: isTemp });
       playSuccessSound();
     } catch (err: unknown) {
       console.error(err);
@@ -90,11 +96,11 @@ export default function CaixaDashboard() {
 
     try {
       const rechargeBalance = httpsCallable<
-        { user_id: string; amount_cents: number },
+        { user_id: string; amount_cents: number; is_temp?: boolean },
         { success: boolean; message: string }
       >(functions, "rechargeBalance");
 
-      await rechargeBalance({ user_id: customer.uid, amount_cents: amountCents });
+      await rechargeBalance({ user_id: customer.uid, amount_cents: amountCents, is_temp: customer.is_temp });
 
       setSuccessMessage(`Recarga de ${formatCurrency(amountCents)} aplicada!`);
       playSuccessSound();
@@ -121,12 +127,22 @@ export default function CaixaDashboard() {
 
     setGeneratingFichas(true);
     try {
+      // Buscar todos os códigos existentes para não repetir
+      const existingSnap = await getDocs(collection(db, "temp_accounts"));
+      const existingCodes = new Set(existingSnap.docs.map(d => d.data().code));
+
       const batch = writeBatch(db);
       const fichaIds: Array<{ id: string; code: string }> = [];
 
       for (let i = 0; i < qty; i++) {
         const ref = doc(collection(db, "temp_accounts"));
-        const code = String(Math.floor(Math.random() * 9000) + 1000); // 4 dígitos
+        
+        let code;
+        do {
+          code = String(Math.floor(Math.random() * 9000) + 1000); // 4 dígitos
+        } while (existingCodes.has(code));
+        existingCodes.add(code); // Evita duplicata neste mesmo lote
+
         batch.set(ref, {
           code,
           balance: 0,

@@ -40,10 +40,13 @@ export const processPayment = onCall(
       throw Errors.INVALID_ARGUMENT("qr_payload", "QR Code inválido");
     }
 
-    const customerId = parseAndVerifyQR(qr_payload);
-    if (!customerId) {
+    const parseResult = parseAndVerifyQR(qr_payload);
+    if (!parseResult) {
       throw Errors.INVALID_ARGUMENT("qr_payload", "QR Code inválido ou adulterado");
     }
+
+    const customerId = parseResult.uid;
+    const isTempAccount = parseResult.is_temp;
 
     // 3. Validar itens
     const validatedItems = validateSaleItems(items);
@@ -92,12 +95,13 @@ export const processPayment = onCall(
         throw Errors.INVALID_ARGUMENT("stall_id", "barraca está inativa");
       }
 
-      // Buscar cliente
-      const customerRef = db.collection("users").doc(customerId);
+      // Buscar cliente ou ficha
+      const collectionName = isTempAccount ? "temp_accounts" : "users";
+      const customerRef = db.collection(collectionName).doc(customerId);
       const customerSnap = await tx.get(customerRef);
 
       if (!customerSnap.exists) {
-        throw Errors.NOT_FOUND("Cliente");
+        throw Errors.NOT_FOUND(isTempAccount ? "Ficha Físico" : "Cliente");
       }
 
       const customerData = customerSnap.data()!;
@@ -153,7 +157,7 @@ export const processPayment = onCall(
         type: "purchase",
         amount_cents: totalCents,
         user_id: customerId,
-        user_name: customerData.name,
+        user_name: isTempAccount ? `Ficha #${customerData.code}` : customerData.name,
         stall_id: stallId,
         stall_name: stallData.name,
         operator_id: operatorId,

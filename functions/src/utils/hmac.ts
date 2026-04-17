@@ -53,17 +53,21 @@ export function generateQRPayload(uid: string): string {
 
 /**
  * Decodifica e valida o payload do QR Code
- * Retorna o UID se válido, null se inválido
+ * Retorna o objeto com UID e a indicação is_temp, nulo se for inválido
  */
-export function parseAndVerifyQR(payload: string): string | null {
+export function parseAndVerifyQR(payload: string): { uid: string, is_temp: boolean } | null {
   const parts = payload.split(":");
   if (parts.length !== 2) return null;
 
   const [uid, hmac] = parts;
   if (!uid || !hmac) return null;
 
+  if (hmac === `temp_${uid}`) {
+    return { uid, is_temp: true };
+  }
+
   if (verifyHMAC(uid, hmac)) {
-    return uid;
+    return { uid, is_temp: false };
   }
 
   return null;

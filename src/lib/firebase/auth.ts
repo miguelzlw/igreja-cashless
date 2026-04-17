@@ -72,6 +72,7 @@ export async function signOut(): Promise<void> {
 }
 
 export async function resetPassword(email: string): Promise<void> {
+  auth.languageCode = "pt"; // Força idioma da interface de e-mail e página para Português
   await sendPasswordResetEmail(auth, email);
 }
 
@@ -83,12 +84,12 @@ export function getFirebaseErrorMessage(code: string): string {
     "auth/weak-password": "A senha deve ter pelo menos 6 caracteres.",
     "auth/user-disabled": "Esta conta foi desativada.",
     "auth/user-not-found": "E-mail ou senha incorretos.",
-    "auth/wrong-password": "E-mail ou senha incorretos.",
-    "auth/invalid-credential": "E-mail ou senha incorretos.",
+    "auth/wrong-password": "A senha está incorreta.",
+    "auth/invalid-credential": "E-mail não encontrado ou senha incorreta.",
     "auth/too-many-requests": "Muitas tentativas. Tente novamente mais tarde.",
     "auth/popup-closed-by-user": "Login cancelado.",
     "auth/network-request-failed": "Erro de conexão. Verifique sua internet.",
     "auth/missing-email": "Informe um e-mail válido.",
   };
-  return messages[code] || "Ocorreu um erro. Tente novamente.";
+  return messages[code] || "Ocorreu um erro verifique os dados inseridos. (" + code + ")";
 }
