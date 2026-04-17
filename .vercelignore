@@ -1,0 +1,7 @@
+# Ignorar pasta de Firebase Functions na Vercel
+functions/
+node_modules/
+.firebase/
+.next/
+out/
+build/
