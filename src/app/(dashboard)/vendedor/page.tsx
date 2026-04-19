@@ -594,7 +594,7 @@ export default function VendedorDashboard() {
 
       {/* Barra de Carrinho Flutuante */}
       {cartCount > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 animate-slide-up">
+        <div className="fixed bottom-20 left-0 right-0 p-4 animate-slide-up z-30">
           <button
             onClick={() => setShowCart(true)}
             className="btn-primary w-full max-w-md mx-auto py-4 text-lg flex items-center justify-between px-6 shadow-2xl shadow-primary/30"

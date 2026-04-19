@@ -125,7 +125,7 @@ export default function Navbar() {
               {mobileMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-56 glass-card p-2 z-50 animate-slide-down">
+                  <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-2xl p-2 z-50 animate-slide-down" style={{ backdropFilter: 'none' }}>
                     <div className="px-3 py-2 border-b border-[hsl(var(--border))] mb-2">
                       <p className="text-sm font-medium text-[hsl(var(--text-primary))] truncate">{userDoc.name}</p>
                       <p className="text-xs text-[hsl(var(--text-muted))] truncate">{user.email}</p>
