@@ -84,6 +84,14 @@ service cloud.firestore {
       allow delete: if hasRole('admin');
     }
 
+    // ── Pagamentos PIX ────────────────────────────────────
+    // Criação e confirmação acontecem via API Routes (Admin SDK).
+    // Clientes só podem ler SEUS PRÓPRIOS pagamentos.
+    match /pix_payments/{paymentId} {
+      allow read: if isAuth() && resource.data.user_id == uid();
+      allow create, update, delete: if false; // Somente Admin SDK
+    }
+
     // ── Bloqueio padrão ─────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

@@ -309,10 +309,10 @@ export default function CaixaDashboard() {
               )}
             </button>
 
-            <button disabled className="w-full py-4 rounded-xl bg-[#00B1EA]/10 text-[#00B1EA] font-bold flex items-center justify-center gap-2 cursor-not-allowed opacity-50">
+            <div className="w-full py-4 rounded-xl bg-[#00B1EA]/10 text-[#00B1EA] font-medium flex items-center justify-center gap-2 text-sm">
               <QrCodeIcon className="w-5 h-5" />
-              Gerar PIX Nativo (Em Breve)
-            </button>
+              PIX disponível — o cliente gera pelo app dele
+            </div>
           </div>
         </section>
       )}
