@@ -1,12 +1,129 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb, adminAuth } from "@/lib/firebase/admin";
 
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY!;
 const ASAAS_API_URL = "https://api.asaas.com/v3";
+const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!;
 
 // Valores mínimo e máximo em centavos
 const MIN_PIX_CENTS = 500;    // R$ 5,00
 const MAX_PIX_CENTS = 50000;  // R$ 500,00
+
+// Cache simples para evitar criar o mesmo customer várias vezes
+const customerCache = new Map<string, string>();
+
+/**
+ * Verifica o Firebase ID Token via REST API (sem necessidade de Admin SDK)
+ */
+async function verifyFirebaseToken(idToken: string) {
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${process.env.NEXT_PUBLIC_FIREBASE_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    }
+  );
+
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  if (!data.users || data.users.length === 0) return null;
+
+  return {
+    uid: data.users[0].localId,
+    email: data.users[0].email,
+    name: data.users[0].displayName || data.users[0].email?.split("@")[0] || "Participante",
+  };
+}
+
+/**
+ * Lê um documento do Firestore via REST API
+ */
+async function firestoreGet(collection: string, docId: string) {
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.fields;
+}
+
+/**
+ * Escreve um documento no Firestore via REST API
+ */
+async function firestoreSet(collection: string, docId: string, fields: Record<string, unknown>) {
+  const firestoreFields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (typeof value === "string") {
+      firestoreFields[key] = { stringValue: value };
+    } else if (typeof value === "number") {
+      firestoreFields[key] = { integerValue: String(value) };
+    } else if (typeof value === "boolean") {
+      firestoreFields[key] = { booleanValue: value };
+    } else if (value instanceof Date) {
+      firestoreFields[key] = { timestampValue: value.toISOString() };
+    }
+  }
+
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}?documentId=${docId}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: firestoreFields }),
+  });
+
+  return res.ok;
+}
+
+/**
+ * Busca ou cria um customer no Asaas para o usuário
+ */
+async function getOrCreateAsaasCustomer(userId: string, name: string, email: string): Promise<string | null> {
+  // Verifica cache em memória
+  if (customerCache.has(userId)) {
+    return customerCache.get(userId)!;
+  }
+
+  // Tenta buscar customer existente pelo externalReference
+  const searchRes = await fetch(
+    `${ASAAS_API_URL}/customers?externalReference=${userId}`,
+    { headers: { "access_token": ASAAS_API_KEY } }
+  );
+
+  if (searchRes.ok) {
+    const searchData = await searchRes.json();
+    if (searchData.data && searchData.data.length > 0) {
+      const customerId = searchData.data[0].id;
+      customerCache.set(userId, customerId);
+      return customerId;
+    }
+  }
+
+  // Cria novo customer
+  const createRes = await fetch(`${ASAAS_API_URL}/customers`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "access_token": ASAAS_API_KEY,
+    },
+    body: JSON.stringify({
+      name: name || "Participante",
+      email: email || undefined,
+      externalReference: userId,
+      notificationDisabled: true,
+      // CPF não é obrigatório para criar customer, só para algumas operações
+    }),
+  });
+
+  if (!createRes.ok) {
+    const err = await createRes.json();
+    console.error("Erro ao criar customer no Asaas:", JSON.stringify(err));
+    return null;
+  }
+
+  const customerData = await createRes.json();
+  customerCache.set(userId, customerData.id);
+  return customerData.id;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,14 +134,12 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.split("Bearer ")[1];
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch {
+    const firebaseUser = await verifyFirebaseToken(token);
+    if (!firebaseUser) {
       return NextResponse.json({ error: "Token inválido" }, { status: 401 });
     }
 
-    const userId = decodedToken.uid;
+    const userId = firebaseUser.uid;
 
     // 2. Validar dados da requisição
     const body = await request.json();
@@ -42,125 +157,63 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Valor máximo: R$ ${(MAX_PIX_CENTS / 100).toFixed(2)}` }, { status: 400 });
     }
 
-    // 3. Buscar dados do usuário no Firestore
-    const userDoc = await adminDb.collection("users").doc(userId).get();
-    if (!userDoc.exists) {
-      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
-    }
+    // 3. Buscar ou criar customer no Asaas
+    const customerId = await getOrCreateAsaasCustomer(
+      userId,
+      firebaseUser.name,
+      firebaseUser.email
+    );
 
-    const userData = userDoc.data()!;
+    if (!customerId) {
+      return NextResponse.json({ error: "Erro ao preparar pagamento. Tente novamente." }, { status: 500 });
+    }
 
     // 4. Criar cobrança PIX no Asaas
     const amountBRL = (amountCents / 100).toFixed(2);
+    const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-    const asaasResponse = await fetch(`${ASAAS_API_URL}/payments`, {
+    const paymentRes = await fetch(`${ASAAS_API_URL}/payments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "access_token": ASAAS_API_KEY,
       },
       body: JSON.stringify({
-        customer: undefined, // Vamos criar inline
+        customer: customerId,
         billingType: "PIX",
         value: parseFloat(amountBRL),
-        description: `Recarga Cashless - ${userData.name}`,
+        description: `Recarga Cashless - ${firebaseUser.name}`,
         externalReference: `pix_${userId}_${Date.now()}`,
-        dueDate: new Date(Date.now() + 30 * 60 * 1000).toISOString().split("T")[0], // 30 min
+        dueDate,
       }),
     });
 
-    // Se não tiver customer, precisamos criar primeiro
-    if (!asaasResponse.ok) {
-      // Tenta criar o customer primeiro
-      const customerRes = await fetch(`${ASAAS_API_URL}/customers`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "access_token": ASAAS_API_KEY,
-        },
-        body: JSON.stringify({
-          name: userData.name || "Participante",
-          email: userData.email || undefined,
-          externalReference: userId,
-          notificationDisabled: true,
-        }),
-      });
-
-      if (!customerRes.ok) {
-        const err = await customerRes.json();
-        console.error("Erro ao criar customer no Asaas:", err);
-        return NextResponse.json({ error: "Erro ao preparar pagamento" }, { status: 500 });
-      }
-
-      const customerData = await customerRes.json();
-
-      // Agora cria a cobrança com o customer
-      const paymentRes = await fetch(`${ASAAS_API_URL}/payments`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "access_token": ASAAS_API_KEY,
-        },
-        body: JSON.stringify({
-          customer: customerData.id,
-          billingType: "PIX",
-          value: parseFloat(amountBRL),
-          description: `Recarga Cashless - ${userData.name}`,
-          externalReference: `pix_${userId}_${Date.now()}`,
-          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-        }),
-      });
-
-      if (!paymentRes.ok) {
-        const err = await paymentRes.json();
-        console.error("Erro ao criar cobrança:", err);
-        return NextResponse.json({ error: "Erro ao gerar PIX" }, { status: 500 });
-      }
-
-      const paymentData = await paymentRes.json();
-
-      // Buscar QR Code do PIX
-      const qrRes = await fetch(`${ASAAS_API_URL}/payments/${paymentData.id}/pixQrCode`, {
-        headers: { "access_token": ASAAS_API_KEY },
-      });
-
-      if (!qrRes.ok) {
-        return NextResponse.json({ error: "Erro ao gerar QR Code PIX" }, { status: 500 });
-      }
-
-      const qrData = await qrRes.json();
-
-      // 5. Salvar pendência no Firestore
-      await adminDb.collection("pix_payments").doc(paymentData.id).set({
-        user_id: userId,
-        user_name: userData.name,
-        asaas_payment_id: paymentData.id,
-        amount_cents: amountCents,
-        status: "PENDING",
-        created_at: new Date(),
-        expires_at: new Date(Date.now() + 30 * 60 * 1000), // 30 min
-      });
-
-      return NextResponse.json({
-        success: true,
-        payment_id: paymentData.id,
-        qr_code: qrData.encodedImage, // Base64 da imagem do QR
-        copy_paste: qrData.payload,    // Código copia e cola
-        amount_cents: amountCents,
-        expires_in_minutes: 30,
-      });
+    if (!paymentRes.ok) {
+      const err = await paymentRes.json();
+      console.error("Erro ao criar cobrança PIX:", JSON.stringify(err));
+      return NextResponse.json({ error: "Erro ao gerar cobrança PIX" }, { status: 500 });
     }
 
-    // Caso a primeira tentativa tenha funcionado (raro na primeira vez)
-    const paymentData = await asaasResponse.json();
+    const paymentData = await paymentRes.json();
+
+    // 5. Buscar QR Code do PIX
     const qrRes = await fetch(`${ASAAS_API_URL}/payments/${paymentData.id}/pixQrCode`, {
       headers: { "access_token": ASAAS_API_KEY },
     });
+
+    if (!qrRes.ok) {
+      const err = await qrRes.json();
+      console.error("Erro ao gerar QR Code:", JSON.stringify(err));
+      return NextResponse.json({ error: "Erro ao gerar QR Code PIX" }, { status: 500 });
+    }
+
     const qrData = await qrRes.json();
 
-    await adminDb.collection("pix_payments").doc(paymentData.id).set({
+    // 6. Salvar pendência no Firestore (via REST API)
+    await firestoreSet("pix_payments", paymentData.id, {
       user_id: userId,
-      user_name: userData.name,
+      user_name: firebaseUser.name,
+      user_email: firebaseUser.email,
       asaas_payment_id: paymentData.id,
       amount_cents: amountCents,
       status: "PENDING",
