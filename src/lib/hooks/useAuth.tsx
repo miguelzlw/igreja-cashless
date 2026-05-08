@@ -4,11 +4,14 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase/config";
 import { subscribeToDocument } from "@/lib/firebase/firestore";
+import { useDevImpersonation } from "@/lib/hooks/useDevImpersonation";
 import type { AuthState, AuthUser, UserDoc, UserRole } from "@/lib/types";
 
 interface AuthContextType extends AuthState {
   isRole: (role: UserRole | UserRole[]) => boolean;
   refreshUser: () => void;
+  effectiveRole: UserRole | null;
+  isDev: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [refreshKey, setRefreshKey] = useState(0);
+  const { viewAsRole } = useDevImpersonation();
 
   const refreshUser = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -95,17 +99,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshKey]);
 
+  const realRole: UserRole | null = state.userDoc?.role ?? null;
+  const isDev = realRole === "desenvolvedor";
+  const effectiveRole: UserRole | null = isDev && viewAsRole ? viewAsRole : realRole;
+
   const isRole = useCallback(
     (role: UserRole | UserRole[]): boolean => {
-      if (!state.userDoc) return false;
-      if (Array.isArray(role)) return role.includes(state.userDoc.role);
-      return state.userDoc.role === role;
+      if (!effectiveRole) return false;
+      if (Array.isArray(role)) return role.includes(effectiveRole);
+      return effectiveRole === role;
     },
-    [state.userDoc]
+    [effectiveRole]
   );
 
   return (
-    <AuthContext.Provider value={{ ...state, isRole, refreshUser }}>
+    <AuthContext.Provider value={{ ...state, isRole, refreshUser, effectiveRole, isDev }}>
       {children}
     </AuthContext.Provider>
   );

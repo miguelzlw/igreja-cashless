@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { useDevImpersonation, IMPERSONABLE_ROLES } from "@/lib/hooks/useDevImpersonation";
 import { signOut } from "@/lib/firebase/auth";
-import { getRoleLabel } from "@/components/auth/AuthGuard";
+import { getRoleDashboardPath, getRoleLabel } from "@/components/auth/AuthGuard";
 import ThemeToggle from "./ThemeToggle";
 import type { UserRole } from "@/lib/types";
 
@@ -15,7 +16,7 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
-function getNavItems(role: UserRole | undefined): NavItem[] {
+function getNavItems(role: UserRole | null | undefined): NavItem[] {
   switch (role) {
     case "admin":
       return [
@@ -38,6 +39,10 @@ function getNavItems(role: UserRole | undefined): NavItem[] {
       return [
         { label: "PDV", href: "/vendedor", icon: <CartIcon /> },
       ];
+    case "desenvolvedor":
+      return [
+        { label: "Hub Dev", href: "/dev", icon: <CodeIcon /> },
+      ];
     case "user":
     default:
       return [
@@ -47,17 +52,37 @@ function getNavItems(role: UserRole | undefined): NavItem[] {
 }
 
 export default function Navbar() {
-  const { user, userDoc } = useAuth();
+  const { user, userDoc, effectiveRole, isDev } = useAuth();
+  const { viewAsRole, setViewAsRole, clear: clearViewAs } = useDevImpersonation();
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [devMenuOpen, setDevMenuOpen] = useState(false);
 
   if (!user || !userDoc) return null;
 
-  const navItems = getNavItems(userDoc.role);
+  const navItems = getNavItems(effectiveRole ?? userDoc.role);
 
   const handleSignOut = async () => {
     await signOut();
   };
+
+  const handleImpersonate = (role: UserRole) => {
+    setViewAsRole(role);
+    setDevMenuOpen(false);
+    router.push(getRoleDashboardPath(role));
+  };
+
+  const handleClearImpersonation = () => {
+    clearViewAs();
+    setDevMenuOpen(false);
+    router.push("/dev");
+  };
+
+  const roleLabel =
+    isDev && viewAsRole
+      ? `Dev → ${getRoleLabel(viewAsRole)}`
+      : getRoleLabel(userDoc.role);
 
   return (
     <>
@@ -75,7 +100,7 @@ export default function Navbar() {
               </span>
             </Link>
             <span className="badge-primary text-[10px] hidden sm:inline-flex">
-              {getRoleLabel(userDoc.role)}
+              {roleLabel}
             </span>
           </div>
 
@@ -102,6 +127,61 @@ export default function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center gap-2">
+            {isDev && (
+              <div className="relative">
+                <button
+                  onClick={() => setDevMenuOpen(!devMenuOpen)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-300 text-xs font-semibold hover:bg-fuchsia-500/20 transition-colors"
+                  id="dev-switcher-button"
+                  aria-label="Trocar perfil de visualização"
+                >
+                  <CodeIcon />
+                  <span className="hidden sm:inline">
+                    {viewAsRole ? getRoleLabel(viewAsRole) : "Hub Dev"}
+                  </span>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {devMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setDevMenuOpen(false)} />
+                    <div
+                      className="absolute right-0 mt-2 w-56 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-2xl p-2 z-50 animate-slide-down"
+                      style={{ backdropFilter: "none" }}
+                    >
+                      <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--text-muted))]">
+                        Visualizar como
+                      </p>
+                      {IMPERSONABLE_ROLES.map((role) => (
+                        <button
+                          key={role}
+                          onClick={() => handleImpersonate(role)}
+                          className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                            viewAsRole === role
+                              ? "bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-200 font-medium"
+                              : "text-[hsl(var(--text-primary))] hover:bg-[hsl(var(--bg))]"
+                          }`}
+                        >
+                          <span>{getRoleLabel(role)}</span>
+                          {viewAsRole === role && (
+                            <span className="text-[10px] text-fuchsia-500">ativo</span>
+                          )}
+                        </button>
+                      ))}
+                      <div className="border-t border-[hsl(var(--border))] my-1.5" />
+                      <button
+                        onClick={handleClearImpersonation}
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[hsl(var(--text-secondary))] hover:bg-[hsl(var(--bg))] transition-colors"
+                      >
+                        <CodeIcon />
+                        Voltar ao Hub Dev
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             <ThemeToggle />
 
             {/* User menu */}
@@ -129,7 +209,7 @@ export default function Navbar() {
                     <div className="px-3 py-2 border-b border-[hsl(var(--border))] mb-2">
                       <p className="text-sm font-medium text-[hsl(var(--text-primary))] truncate">{userDoc.name}</p>
                       <p className="text-xs text-[hsl(var(--text-muted))] truncate">{user.email}</p>
-                      <span className="badge-primary text-[10px] mt-1">{getRoleLabel(userDoc.role)}</span>
+                      <span className="badge-primary text-[10px] mt-1">{roleLabel}</span>
                     </div>
 
                     {/* Mobile nav items */}
@@ -254,6 +334,14 @@ function MenuIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+    </svg>
+  );
+}
+
+function CodeIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
     </svg>
   );
 }

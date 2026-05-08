@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/hooks/useAuth";
+import { DevImpersonationProvider } from "@/lib/hooks/useDevImpersonation";
 import OfflineBanner from "@/components/shared/OfflineBanner";
 
 const inter = Inter({
@@ -68,10 +69,12 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col font-sans antialiased bg-[hsl(var(--bg))] text-[hsl(var(--text-primary))]">
-        <AuthProvider>
-          <OfflineBanner />
-          {children}
-        </AuthProvider>
+        <DevImpersonationProvider>
+          <AuthProvider>
+            <OfflineBanner />
+            {children}
+          </AuthProvider>
+        </DevImpersonationProvider>
       </body>
     </html>
   );

@@ -1,5 +1,5 @@
 // ===== Papéis do sistema =====
-export type UserRole = "user" | "vendedor" | "gerente_barraca" | "caixa" | "admin";
+export type UserRole = "user" | "vendedor" | "gerente_barraca" | "caixa" | "admin" | "desenvolvedor";
 
 // ===== Tipos de conta =====
 export type AccountType = "user" | "temp";

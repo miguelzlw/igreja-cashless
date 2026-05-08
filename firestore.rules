@@ -11,16 +11,18 @@ service cloud.firestore {
     function role() { return getUserData().role; }
     function hasRole(r) { return isAuth() && role() == r; }
     function hasAnyRole(roles) { return isAuth() && role() in roles; }
+    function isDev() { return hasRole('desenvolvedor'); }
     function isOwner(userId) { return isAuth() && uid() == userId; }
     function getUserStallId() { return getUserData().stall_id; }
 
     // ── Usuários ────────────────────────────────────────────
     match /users/{userId} {
-      allow read: if isOwner(userId) || hasAnyRole(['admin', 'caixa', 'gerente_barraca', 'vendedor']);
-      allow create: if isOwner(userId) || hasRole('admin');
+      allow read: if isOwner(userId) || hasAnyRole(['admin', 'caixa', 'gerente_barraca', 'vendedor', 'desenvolvedor']);
+      allow create: if isOwner(userId) || hasRole('admin') || isDev();
       allow update: if
         hasRole('admin') ||
         hasRole('caixa') ||
+        isDev() ||
         // Gerente pode vincular/desvincular vendedores da SUA barraca
         (hasRole('gerente_barraca') &&
           request.resource.data.diff(resource.data).affectedKeys()
@@ -41,23 +43,24 @@ service cloud.firestore {
       allow read: if isAuth() && (
         resource.data.user_id == uid() ||
         resource.data.operator_id == uid() ||
-        hasAnyRole(['admin', 'caixa']) ||
+        hasAnyRole(['admin', 'caixa', 'desenvolvedor']) ||
         (hasRole('gerente_barraca') && resource.data.stall_id == getUserStallId())
       );
-      allow create, update, delete: if hasRole('admin');
+      allow create, update, delete: if hasRole('admin') || isDev();
     }
 
     // ── Barracas ────────────────────────────────────────────
     match /stalls/{stallId} {
       allow read: if isAuth();
-      allow create: if hasRole('admin');
+      allow create: if hasRole('admin') || isDev();
       allow update: if
         hasRole('admin') ||
+        isDev() ||
         // Gerente pode atualizar dados da SUA barraca (exceto total_sales_cents)
         (hasRole('gerente_barraca') && getUserStallId() == stallId &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_sales_cents']));
       // total_sales_cents só é incrementado via Cloud Function (admin SDK)
-      allow delete: if hasRole('admin');
+      allow delete: if hasRole('admin') || isDev();
     }
 
     // ── Produtos (subcoleção) ───────────────────────────────
@@ -65,23 +68,26 @@ service cloud.firestore {
       allow read: if isAuth();
       allow create, update: if
         hasRole('admin') ||
+        isDev() ||
         (hasRole('gerente_barraca') && getUserStallId() == stallId);
       // Vendedor só pode atualizar campos operacionais (estoque, contadores)
       allow update: if
-        hasRole('vendedor') && getUserStallId() == stallId &&
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['stock', 'units_sold', 'revenue_cents', 'updated_at']);
+        isDev() ||
+        (hasRole('vendedor') && getUserStallId() == stallId &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['stock', 'units_sold', 'revenue_cents', 'updated_at']));
       allow delete: if
         hasRole('admin') ||
+        isDev() ||
         (hasRole('gerente_barraca') && getUserStallId() == stallId);
     }
 
     // ── Contas Temporárias / Fichas ────────────────────────
     match /temp_accounts/{accountId} {
-      allow read: if hasAnyRole(['admin', 'caixa']);
-      allow create: if hasRole('caixa') || hasRole('admin');
-      allow update: if hasAnyRole(['admin', 'caixa', 'vendedor']);
-      allow delete: if hasRole('admin');
+      allow read: if hasAnyRole(['admin', 'caixa', 'desenvolvedor']);
+      allow create: if hasRole('caixa') || hasRole('admin') || isDev();
+      allow update: if hasAnyRole(['admin', 'caixa', 'vendedor', 'desenvolvedor']);
+      allow delete: if hasRole('admin') || isDev();
     }
 
     // ── Pagamentos PIX ────────────────────────────────────

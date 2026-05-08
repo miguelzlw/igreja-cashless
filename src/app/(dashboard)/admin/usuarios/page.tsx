@@ -21,6 +21,7 @@ const ROLE_FILTERS = [
   { key: "caixa", label: "Caixas", color: "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" },
   { key: "vendedor", label: "Vendedores", color: "bg-amber-500/10 text-amber-500 border-amber-500/30" },
   { key: "gerente_barraca", label: "Gerentes", color: "bg-purple-500/10 text-purple-500 border-purple-500/30" },
+  { key: "desenvolvedor", label: "Desenvolvedores", color: "bg-fuchsia-500/10 text-fuchsia-500 border-fuchsia-500/30" },
 ];
 
 interface UserData {
@@ -60,7 +61,7 @@ function UsuariosContent() {
   const [allEmails, setAllEmails] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!user || userDoc?.role !== "admin") return;
+    if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return;
 
     const q = query(collection(db, "stalls"));
     const unsub = onSnapshot(q, (snap) => {
@@ -143,12 +144,12 @@ function UsuariosContent() {
     setSavingRole(true);
     setRoleSaveSuccess("");
     try {
-      const needsStall = ["vendedor", "gerente_barraca"].includes(selectedRole);
+      const canHaveStall = ["vendedor", "gerente_barraca", "desenvolvedor"].includes(selectedRole);
       const stallName = stalls.find(s => s.id === selectedStall)?.name || "";
       await updateDoc(doc(db, "users", editingUser.uid), {
         role: selectedRole,
-        stall_id: needsStall && selectedStall ? selectedStall : null,
-        stall_name: needsStall && selectedStall ? stallName : null,
+        stall_id: canHaveStall && selectedStall ? selectedStall : null,
+        stall_name: canHaveStall && selectedStall ? stallName : null,
       });
       setRoleSaveSuccess(`Cargo de ${editingUser.name} atualizado para "${selectedRole}"!`);
 
@@ -170,7 +171,7 @@ function UsuariosContent() {
     }
   };
 
-  if (!user || userDoc?.role !== "admin") return null;
+  if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return null;
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 space-y-6 animate-fade-in pb-24">
@@ -309,7 +310,7 @@ function UsuariosContent() {
           <div className="space-y-2">
             <label className="text-sm font-medium text-[hsl(var(--text-secondary))]">Novo Cargo</label>
             <div className="grid grid-cols-2 gap-2">
-              {(["user", "caixa", "vendedor", "gerente_barraca", "admin"] as const).map(role => (
+              {(["user", "caixa", "vendedor", "gerente_barraca", "admin", "desenvolvedor"] as const).map(role => (
                 <button
                   key={role}
                   onClick={() => setSelectedRole(role)}
@@ -319,24 +320,33 @@ function UsuariosContent() {
                       : "border-[hsl(var(--border))] text-[hsl(var(--text-secondary))] hover:border-primary/50"
                   }`}
                 >
-                  {role === "gerente_barraca" ? "Gerente" : role === "user" ? "Usuário" : role.charAt(0).toUpperCase() + role.slice(1)}
+                  {role === "gerente_barraca"
+                    ? "Gerente"
+                    : role === "user"
+                    ? "Usuário"
+                    : role === "desenvolvedor"
+                    ? "Desenvolvedor"
+                    : role.charAt(0).toUpperCase() + role.slice(1)}
                 </button>
               ))}
             </div>
           </div>
 
           {/* Vincular barraca */}
-          {(selectedRole === "vendedor" || selectedRole === "gerente_barraca") && (
+          {(selectedRole === "vendedor" || selectedRole === "gerente_barraca" || selectedRole === "desenvolvedor") && (
             <div className="space-y-2">
               <label className="text-sm font-medium text-[hsl(var(--text-secondary))]">
-                Vincular à Barraca <span className="text-danger">*</span>
+                Vincular à Barraca {selectedRole !== "desenvolvedor" && <span className="text-danger">*</span>}
+                {selectedRole === "desenvolvedor" && (
+                  <span className="text-[hsl(var(--text-muted))] text-xs ml-1">(opcional, para testar PDV)</span>
+                )}
               </label>
               <select
                 value={selectedStall}
                 onChange={e => setSelectedStall(e.target.value)}
                 className="input"
               >
-                <option value="">Selecione uma barraca...</option>
+                <option value="">{selectedRole === "desenvolvedor" ? "Sem barraca" : "Selecione uma barraca..."}</option>
                 {stalls.map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
