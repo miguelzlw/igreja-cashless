@@ -41,7 +41,7 @@ function BarracasContent() {
   const [successStr, setSuccessStr] = useState("");
 
   useEffect(() => {
-    if (!user || userDoc?.role !== "admin") return;
+    if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return;
     const q = query(collection(db, "stalls"), orderBy("created_at", "desc"));
     const unsub = onSnapshot(q, (snap) => {
       const parsed: LocalStall[] = snap.docs.map(d => ({
@@ -104,7 +104,7 @@ function BarracasContent() {
     }
   };
 
-  if (!user || userDoc?.role !== "admin") return null;
+  if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return null;
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 space-y-6 animate-fade-in pb-24">

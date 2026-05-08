@@ -34,7 +34,7 @@ function AdminRelatorioContent() {
   const [caixas, setCaixas] = useState<{name: string, total: number}[]>([]);
 
   useEffect(() => {
-    if (!user || userDoc?.role !== "admin") return;
+    if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return;
 
     const fetchMetrics = async () => {
       try {
@@ -111,7 +111,7 @@ function AdminRelatorioContent() {
     return () => unsub();
   }, [user, userDoc]);
 
-  if (!user || userDoc?.role !== "admin") return null;
+  if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return null;
 
   const eventTotalCents = stalls.reduce((sum, s) => sum + s.total_sales_cents, 0);
 

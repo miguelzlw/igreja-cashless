@@ -31,6 +31,9 @@ export default function AuthGuard({
     // Autenticado mas sem doc (aguardando Cloud Function onUserCreate)
     if (!userDoc) return;
 
+    // Desenvolvedor tem acesso irrestrito a qualquer página protegida
+    if (userDoc.role === "desenvolvedor") return;
+
     // Role não permitida → redireciona para dashboard correto
     if (allowedRoles && !allowedRoles.includes(userDoc.role)) {
       const dashboardPath = getRoleDashboardPath(userDoc.role);
@@ -65,8 +68,14 @@ export default function AuthGuard({
     );
   }
 
-  // Role não permitida
-  if (allowedRoles && !allowedRoles.includes(userDoc.role)) return null;
+  // Role não permitida (desenvolvedor sempre passa)
+  if (
+    userDoc.role !== "desenvolvedor" &&
+    allowedRoles &&
+    !allowedRoles.includes(userDoc.role)
+  ) {
+    return null;
+  }
 
   return <>{children}</>;
 }
@@ -81,6 +90,8 @@ export function getRoleDashboardPath(role: UserRole): string {
       return "/gerente";
     case "vendedor":
       return "/vendedor";
+    case "desenvolvedor":
+      return "/dev";
     case "user":
     default:
       return "/user";
@@ -97,6 +108,8 @@ export function getRoleLabel(role: UserRole): string {
       return "Gerente de Barraca";
     case "vendedor":
       return "Vendedor";
+    case "desenvolvedor":
+      return "Desenvolvedor";
     case "user":
       return "Participante";
     default:

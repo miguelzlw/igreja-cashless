@@ -22,7 +22,7 @@ function AdminDashboard() {
   const [stalls, setStalls] = useState<{id: string, total_sales_cents: number}[]>([]);
 
   useEffect(() => {
-    if (!user || userDoc?.role !== "admin") return;
+    if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return;
     const q = query(collection(db, "stalls"));
     const unsub = onSnapshot(q, (snap) => {
       setStalls(snap.docs.map(d => ({
@@ -33,7 +33,7 @@ function AdminDashboard() {
     return () => unsub();
   }, [user, userDoc]);
 
-  if (!user || userDoc?.role !== "admin") return null;
+  if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return null;
 
   const eventTotalCents = stalls.reduce((sum, s) => sum + s.total_sales_cents, 0);
 
