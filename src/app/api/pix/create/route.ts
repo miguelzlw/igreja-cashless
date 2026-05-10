@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MAX_BALANCE_CENTS, MIN_PIX_CENTS, MAX_PIX_CENTS, formatBRL } from "@/lib/config/limits";
 
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY!;
 const ASAAS_API_URL = "https://api.asaas.com/v3";
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!;
-
-// Valores mínimo e máximo em centavos
-const MIN_PIX_CENTS = 500;    // R$ 5,00 (mínimo exigido pelo Asaas para cobranças PIX)
-const MAX_PIX_CENTS = 50000;  // R$ 500,00
 
 // Cache simples para evitar criar o mesmo customer várias vezes
 const customerCache = new Map<string, string>();
@@ -110,6 +107,96 @@ async function firestoreSet(
   }
 
   return res.ok;
+}
+
+/**
+ * Lê o saldo atual do usuário no Firestore (autenticando com o ID token dele,
+ * que satisfaz a regra `isOwner`). Retorna 0 se não conseguir ler.
+ */
+async function getUserBalance(userId: string, idToken: string): Promise<number> {
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${userId}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+
+  if (!res.ok) return 0;
+  const data = await res.json();
+  const raw = data?.fields?.balance?.integerValue;
+  return raw ? parseInt(raw, 10) : 0;
+}
+
+/**
+ * Soma o `amount_cents` de todos os pix_payments PENDING do usuário que ainda
+ * não expiraram. Usado para impedir que o usuário gere múltiplos PIX que,
+ * somados ao saldo atual, ultrapassem o teto (MAX_BALANCE_CENTS).
+ *
+ * Usa runQuery (REST API do Firestore) com filtros compostos.
+ */
+async function getPendingPixSum(userId: string, idToken: string): Promise<number> {
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery`;
+  const nowIso = new Date().toISOString();
+
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: "pix_payments" }],
+      where: {
+        compositeFilter: {
+          op: "AND",
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: "user_id" },
+                op: "EQUAL",
+                value: { stringValue: userId },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: "status" },
+                op: "EQUAL",
+                value: { stringValue: "PENDING" },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: "expires_at" },
+                op: "GREATER_THAN",
+                value: { timestampValue: nowIso },
+              },
+            },
+          ],
+        },
+      },
+    },
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error(`getPendingPixSum query falhou: ${res.status} - ${err}`);
+      return 0;
+    }
+
+    const results = await res.json();
+    let sum = 0;
+    for (const item of results) {
+      const amount = item?.document?.fields?.amount_cents?.integerValue;
+      if (amount) sum += parseInt(amount, 10);
+    }
+    return sum;
+  } catch (err) {
+    console.error("getPendingPixSum erro:", err);
+    return 0;
+  }
 }
 
 /**
@@ -255,6 +342,31 @@ export async function POST(request: NextRequest) {
 
     if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) {
       return NextResponse.json({ error: "CPF ou CNPJ inválido. Informe 11 dígitos (CPF) ou 14 (CNPJ)." }, { status: 400 });
+    }
+
+    // 2a. Validar teto de saldo: saldo_atual + PIX_pendentes + nova_recarga ≤ MAX_BALANCE_CENTS.
+    // Lê em paralelo pra economizar latência. Em caso de falha de leitura (ex.: regra
+    // mudou), assume 0 pra não bloquear o usuário — a Cloud Function creditPixPayment
+    // ainda valida o teto na hora de creditar, então não há buraco de segurança.
+    const [currentBalance, pendingSum] = await Promise.all([
+      getUserBalance(userId, token),
+      getPendingPixSum(userId, token),
+    ]);
+
+    const projectedBalance = currentBalance + pendingSum + amountCents;
+    if (projectedBalance > MAX_BALANCE_CENTS) {
+      const remainingRoom = Math.max(0, MAX_BALANCE_CENTS - currentBalance - pendingSum);
+      const message = remainingRoom < MIN_PIX_CENTS
+        ? `Você já está no limite máximo de ${formatBRL(MAX_BALANCE_CENTS)} (incluindo PIX pendentes). Use o saldo antes de recarregar.`
+        : `Você ultrapassaria o limite de ${formatBRL(MAX_BALANCE_CENTS)}. Recarga máxima permitida agora: ${formatBRL(remainingRoom)}.`;
+      return NextResponse.json({
+        error: message,
+        code: "BALANCE_LIMIT_EXCEEDED",
+        current_balance_cents: currentBalance,
+        pending_pix_cents: pendingSum,
+        max_balance_cents: MAX_BALANCE_CENTS,
+        max_recharge_now_cents: remainingRoom,
+      }, { status: 400 });
     }
 
     // 3. Buscar ou criar customer no Asaas (já com CPF)
