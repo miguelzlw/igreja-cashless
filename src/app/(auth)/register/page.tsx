@@ -6,8 +6,24 @@ import { useRouter } from "next/navigation";
 import { signUpWithEmail, signInWithGoogle, getFirebaseErrorMessage } from "@/lib/firebase/auth";
 import { useAuth } from "@/lib/hooks/useAuth";
 
+function formatCpfCnpj(value: string): string {
+  const d = value.replace(/\D/g, "").slice(0, 14);
+  if (d.length <= 11) {
+    return d
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+  }
+  return d
+    .replace(/(\d{2})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1/$2")
+    .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+}
+
 export default function RegisterPage() {
   const [name, setName] = useState("");
+  const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -33,6 +49,12 @@ export default function RegisterPage() {
       return;
     }
 
+    const cpfDigits = cpf.replace(/\D/g, "");
+    if (cpfDigits.length !== 11 && cpfDigits.length !== 14) {
+      setError("Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("As senhas não coincidem.");
       return;
@@ -46,7 +68,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await signUpWithEmail(email.trim(), password, name.trim());
+      await signUpWithEmail(email.trim(), password, name.trim(), cpfDigits);
       router.replace("/");
     } catch (err: unknown) {
       const firebaseError = err as { code?: string };
@@ -119,6 +141,27 @@ export default function RegisterPage() {
                 disabled={loading}
                 minLength={2}
               />
+            </div>
+
+            <div>
+              <label htmlFor="cpf" className="block text-sm font-medium text-[hsl(var(--text-secondary))] mb-1.5">
+                CPF ou CNPJ
+              </label>
+              <input
+                id="cpf"
+                type="text"
+                inputMode="numeric"
+                value={formatCpfCnpj(cpf)}
+                onChange={(e) => setCpf(e.target.value.replace(/\D/g, "").slice(0, 14))}
+                className="input"
+                placeholder="000.000.000-00"
+                required
+                disabled={loading}
+                autoComplete="off"
+              />
+              <p className="text-[10px] text-[hsl(var(--text-muted))] mt-1">
+                Necessário para gerar cobranças PIX (exigência do Asaas).
+              </p>
             </div>
 
             <div>

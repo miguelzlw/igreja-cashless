@@ -5,7 +5,7 @@ const ASAAS_API_URL = "https://api.asaas.com/v3";
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!;
 
 // Valores mínimo e máximo em centavos
-const MIN_PIX_CENTS = 1;      // R$ 0,01 (permite testes; Asaas pode rejeitar valores muito baixos)
+const MIN_PIX_CENTS = 500;    // R$ 5,00 (mínimo exigido pelo Asaas para cobranças PIX)
 const MAX_PIX_CENTS = 50000;  // R$ 500,00
 
 // Cache simples para evitar criar o mesmo customer várias vezes

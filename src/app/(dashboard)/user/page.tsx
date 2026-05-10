@@ -15,7 +15,7 @@ import {
   CheckCircle2, Copy, Clock, RefreshCw, AlertTriangle
 } from "lucide-react";
 
-const PIX_AMOUNTS = [1, 1000, 2000, 5000, 10000]; // centavos (1 = R$ 0,01 para testes)
+const PIX_AMOUNTS = [500, 1000, 2000, 5000, 10000]; // centavos — Asaas exige mínimo de R$ 5,00
 const PIX_SESSION_KEY = "pix:active";
 
 interface ActivePix {
@@ -239,8 +239,8 @@ export default function UserDashboard() {
 
   const handleGeneratePix = useCallback(async () => {
     const amountCents = parseInt(pixAmount.replace(/\D/g, ""));
-    if (isNaN(amountCents) || amountCents < 1) {
-      setPixError("Valor mínimo: R$ 0,01");
+    if (isNaN(amountCents) || amountCents < 500) {
+      setPixError("Valor mínimo: R$ 5,00");
       return;
     }
 

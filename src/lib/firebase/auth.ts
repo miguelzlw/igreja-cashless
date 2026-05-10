@@ -24,13 +24,13 @@ async function generateClientHMAC(uid: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function ensureUserDocument(user: User, nameFallBack?: string) {
+async function ensureUserDocument(user: User, nameFallBack?: string, cpf?: string) {
   const userRef = doc(db, "users", user.uid);
   const snap = await getDoc(userRef);
-  
+
   if (!snap.exists()) {
     const qrHmac = await generateClientHMAC(user.uid);
-    await setDoc(userRef, {
+    const baseDoc: Record<string, unknown> = {
       uid: user.uid,
       email: user.email || "",
       name: user.displayName || nameFallBack || user.email?.split("@")[0] || "Usuário",
@@ -40,7 +40,9 @@ async function ensureUserDocument(user: User, nameFallBack?: string) {
       is_temp: false,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),
-    });
+    };
+    if (cpf) baseDoc.cpf = cpf;
+    await setDoc(userRef, baseDoc);
   }
 }
 
@@ -53,11 +55,12 @@ export async function signInWithEmail(email: string, password: string): Promise<
 export async function signUpWithEmail(
   email: string,
   password: string,
-  name: string
+  name: string,
+  cpf?: string,
 ): Promise<User> {
   const result = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(result.user, { displayName: name });
-  await ensureUserDocument(result.user, name);
+  await ensureUserDocument(result.user, name, cpf);
   return result.user;
 }
 
