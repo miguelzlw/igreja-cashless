@@ -47,12 +47,15 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await signInWithGoogle();
-      router.replace("/");
+      const result = await signInWithGoogle();
+      // Em mobile usamos signInWithRedirect — `result` vem null e o navegador
+      // está sendo redirecionado para a tela do Google. Não chamar router.replace.
+      if (result) {
+        router.replace("/");
+      }
     } catch (err: unknown) {
       const firebaseError = err as { code?: string };
       setError(getFirebaseErrorMessage(firebaseError.code || ""));
-    } finally {
       setLoading(false);
     }
   };

@@ -2,6 +2,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   updateProfile,
@@ -64,10 +66,45 @@ export async function signUpWithEmail(
   return result.user;
 }
 
-export async function signInWithGoogle(): Promise<User> {
+/**
+ * Detecta dispositivos móveis para escolher o fluxo de login Google adequado.
+ * Em mobile usamos signInWithRedirect (popup é instável em iOS Safari, Android
+ * Chrome em PWA, e bloqueado em alguns webviews).
+ */
+function isMobile(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod|Mobile|webOS|Opera Mini/i.test(navigator.userAgent);
+}
+
+export async function signInWithGoogle(): Promise<User | null> {
+  if (isMobile()) {
+    // Redirect: o navegador sai do app, faz login no Google e volta.
+    // O resultado é capturado em `consumeGoogleRedirect()` que precisa ser
+    // chamado no carregamento das páginas de login/registro.
+    await signInWithRedirect(auth, googleProvider);
+    return null; // a página será recarregada pelo provedor
+  }
+  // Desktop: popup tradicional
   const result = await signInWithPopup(auth, googleProvider);
   await ensureUserDocument(result.user);
   return result.user;
+}
+
+/**
+ * Consome o resultado de um signInWithRedirect pendente (após o usuário
+ * voltar do Google). Garante que o documento do usuário exista no Firestore.
+ * Retorna o User se houve redirect bem-sucedido, ou null caso contrário.
+ */
+export async function consumeGoogleRedirect(): Promise<User | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result?.user) return null;
+    await ensureUserDocument(result.user);
+    return result.user;
+  } catch (err) {
+    console.error("Erro ao consumir redirect Google:", err);
+    throw err;
+  }
 }
 
 export async function signOut(): Promise<void> {

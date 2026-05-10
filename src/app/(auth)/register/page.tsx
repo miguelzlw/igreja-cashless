@@ -83,12 +83,14 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await signInWithGoogle();
-      router.replace("/");
+      const result = await signInWithGoogle();
+      // Mobile: signInWithRedirect redireciona o navegador, result vem null
+      if (result) {
+        router.replace("/");
+      }
     } catch (err: unknown) {
       const firebaseError = err as { code?: string };
       setError(getFirebaseErrorMessage(firebaseError.code || ""));
-    } finally {
       setLoading(false);
     }
   };
