@@ -78,12 +78,19 @@ async function firestoreSet(
 }
 
 /**
- * Busca ou cria um customer no Asaas para o usuário
+ * Busca ou cria um customer no Asaas para o usuário.
+ * Se já existir mas estiver sem CPF/CNPJ, atualiza com o que foi passado.
  */
-async function getOrCreateAsaasCustomer(userId: string, name: string, email: string): Promise<string | null> {
-  // Verifica cache em memória
-  if (customerCache.has(userId)) {
-    return customerCache.get(userId)!;
+async function getOrCreateAsaasCustomer(
+  userId: string,
+  name: string,
+  email: string,
+  cpfCnpj: string,
+): Promise<string | null> {
+  // Verifica cache em memória (chave inclui CPF para invalidar quando muda)
+  const cacheKey = `${userId}:${cpfCnpj}`;
+  if (customerCache.has(cacheKey)) {
+    return customerCache.get(cacheKey)!;
   }
 
   // Tenta buscar customer existente pelo externalReference
@@ -95,13 +102,29 @@ async function getOrCreateAsaasCustomer(userId: string, name: string, email: str
   if (searchRes.ok) {
     const searchData = await searchRes.json();
     if (searchData.data && searchData.data.length > 0) {
-      const customerId = searchData.data[0].id;
-      customerCache.set(userId, customerId);
-      return customerId;
+      const existing = searchData.data[0];
+      // Se o customer existe sem CPF (ou com CPF diferente), atualiza
+      if (!existing.cpfCnpj || existing.cpfCnpj.replace(/\D/g, "") !== cpfCnpj) {
+        const updateRes = await fetch(`${ASAAS_API_URL}/customers/${existing.id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "access_token": ASAAS_API_KEY,
+          },
+          body: JSON.stringify({ cpfCnpj, name: name || existing.name, email: email || existing.email }),
+        });
+        if (!updateRes.ok) {
+          const err = await updateRes.json();
+          console.error("Erro ao atualizar customer no Asaas:", JSON.stringify(err));
+          return null;
+        }
+      }
+      customerCache.set(cacheKey, existing.id);
+      return existing.id;
     }
   }
 
-  // Cria novo customer
+  // Cria novo customer já com CPF
   const createRes = await fetch(`${ASAAS_API_URL}/customers`, {
     method: "POST",
     headers: {
@@ -111,9 +134,9 @@ async function getOrCreateAsaasCustomer(userId: string, name: string, email: str
     body: JSON.stringify({
       name: name || "Participante",
       email: email || undefined,
+      cpfCnpj,
       externalReference: userId,
       notificationDisabled: true,
-      // CPF não é obrigatório para criar customer, só para algumas operações
     }),
   });
 
@@ -124,8 +147,33 @@ async function getOrCreateAsaasCustomer(userId: string, name: string, email: str
   }
 
   const customerData = await createRes.json();
-  customerCache.set(userId, customerData.id);
+  customerCache.set(cacheKey, customerData.id);
   return customerData.id;
+}
+
+/**
+ * Atualiza apenas o campo `cpf` no documento do usuário no Firestore.
+ * Usa PATCH com updateMask para não tocar em outros campos (balance, role).
+ */
+async function saveCpfToUserDoc(userId: string, cpf: string, idToken: string) {
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${userId}?updateMask.fieldPaths=cpf&updateMask.fieldPaths=updated_at`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({
+      fields: {
+        cpf: { stringValue: cpf },
+        updated_at: { timestampValue: new Date().toISOString() },
+      },
+    }),
+  });
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error(`saveCpfToUserDoc falhou: ${res.status} - ${errBody}`);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -147,6 +195,7 @@ export async function POST(request: NextRequest) {
     // 2. Validar dados da requisição
     const body = await request.json();
     const amountCents = Math.round(Number(body.amount_cents));
+    const cpfCnpj = String(body.cpf_cnpj || "").replace(/\D/g, "");
 
     if (!amountCents || isNaN(amountCents)) {
       return NextResponse.json({ error: "Valor inválido" }, { status: 400 });
@@ -160,11 +209,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Valor máximo: R$ ${(MAX_PIX_CENTS / 100).toFixed(2)}` }, { status: 400 });
     }
 
-    // 3. Buscar ou criar customer no Asaas
+    if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) {
+      return NextResponse.json({ error: "CPF ou CNPJ inválido. Informe 11 dígitos (CPF) ou 14 (CNPJ)." }, { status: 400 });
+    }
+
+    // 3. Buscar ou criar customer no Asaas (já com CPF)
     const customerId = await getOrCreateAsaasCustomer(
       userId,
       firebaseUser.name,
-      firebaseUser.email
+      firebaseUser.email,
+      cpfCnpj,
     );
 
     if (!customerId) {
@@ -227,6 +281,9 @@ export async function POST(request: NextRequest) {
     if (!saved) {
       return NextResponse.json({ error: "Erro ao registrar pagamento. Tente novamente." }, { status: 500 });
     }
+
+    // 7. Persistir o CPF/CNPJ no userDoc (best-effort — não bloqueia o retorno)
+    saveCpfToUserDoc(userId, cpfCnpj, token).catch(() => {});
 
     return NextResponse.json({
       success: true,

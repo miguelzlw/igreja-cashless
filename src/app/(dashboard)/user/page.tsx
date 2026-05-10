@@ -55,6 +55,23 @@ function saveActivePix(pix: ActivePix | null) {
   }
 }
 
+function formatCpfCnpj(value: string): string {
+  const d = value.replace(/\D/g, "").slice(0, 14);
+  if (d.length <= 11) {
+    // CPF: 000.000.000-00
+    return d
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+  }
+  // CNPJ: 00.000.000/0000-00
+  return d
+    .replace(/(\d{2})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1/$2")
+    .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+}
+
 function formatRemaining(ms: number): string {
   if (ms <= 0) return "0:00";
   const totalSec = Math.floor(ms / 1000);
@@ -70,6 +87,7 @@ export default function UserDashboard() {
 
   // PIX — estado
   const [pixAmount, setPixAmount] = useState("");
+  const [pixCpf, setPixCpf] = useState("");
   const [pixLoading, setPixLoading] = useState(false);
   const [pixError, setPixError] = useState("");
   const [pixQrCode, setPixQrCode] = useState(""); // base64 image
@@ -226,6 +244,12 @@ export default function UserDashboard() {
       return;
     }
 
+    const cpfDigits = (userDoc?.cpf || pixCpf).replace(/\D/g, "");
+    if (cpfDigits.length !== 11 && cpfDigits.length !== 14) {
+      setPixError("Informe seu CPF (11 dígitos) ou CNPJ (14 dígitos).");
+      return;
+    }
+
     setPixLoading(true);
     setPixError("");
     setPixQrCode("");
@@ -242,7 +266,7 @@ export default function UserDashboard() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ amount_cents: amountCents }),
+        body: JSON.stringify({ amount_cents: amountCents, cpf_cnpj: cpfDigits }),
       });
 
       const data = await res.json();
@@ -269,7 +293,7 @@ export default function UserDashboard() {
     } finally {
       setPixLoading(false);
     }
-  }, [pixAmount]);
+  }, [pixAmount, pixCpf, userDoc?.cpf]);
 
   const handleCopyPix = async () => {
     try {
@@ -582,13 +606,32 @@ export default function UserDashboard() {
                   />
                 </div>
 
+                {!userDoc?.cpf && (
+                  <div>
+                    <label className="block text-xs font-medium text-[hsl(var(--text-secondary))] mb-1.5">
+                      CPF ou CNPJ <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="input h-12"
+                      placeholder="000.000.000-00"
+                      value={formatCpfCnpj(pixCpf)}
+                      onChange={e => setPixCpf(e.target.value.replace(/\D/g, "").slice(0, 14))}
+                    />
+                    <p className="text-[10px] text-[hsl(var(--text-muted))] mt-1">
+                      Exigido pelo Asaas para gerar o PIX. Salvamos para você não precisar digitar de novo.
+                    </p>
+                  </div>
+                )}
+
                 {pixError && (
                   <p className="text-sm text-danger bg-danger/10 p-2 rounded-lg text-center">{pixError}</p>
                 )}
 
                 <button
                   onClick={handleGeneratePix}
-                  disabled={pixLoading || !pixAmount}
+                  disabled={pixLoading || !pixAmount || (!userDoc?.cpf && pixCpf.replace(/\D/g, "").length < 11)}
                   className="btn-primary w-full py-4 text-base flex items-center justify-center gap-2"
                 >
                   {pixLoading ? (
