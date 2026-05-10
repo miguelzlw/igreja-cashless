@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { collection, onSnapshot, query, getDocs, orderBy, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { formatCurrency } from "@/lib/utils/formatters";
-import { BarChart2, Store, ArrowLeft, Loader2, ChevronDown, ChevronUp, Wallet, Banknote, Users } from "lucide-react";
+import { BarChart2, Store, ArrowLeft, Loader2, ChevronDown, ChevronUp, Wallet, Banknote, Users, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import AuthGuard from "@/components/auth/AuthGuard";
 import type { StallDoc, ProductDoc } from "@/lib/types";
@@ -31,7 +31,7 @@ function AdminRelatorioContent() {
 
   const [totalRecharges, setTotalRecharges] = useState(0);
   const [totalRetido, setTotalRetido] = useState(0);
-  const [caixas, setCaixas] = useState<{name: string, total: number}[]>([]);
+  const [caixas, setCaixas] = useState<{name: string, total: number, lastAt: number}[]>([]);
 
   useEffect(() => {
     if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return;
@@ -41,20 +41,29 @@ function AdminRelatorioContent() {
         // 1. Total Recargas & Fechamento por Caixa
         const qRecharges = query(collection(db, "transactions"), where("type", "==", "recharge"));
         const rechargesSnap = await getDocs(qRecharges);
-        
+
         let sumRecharges = 0;
-        const caixasMap: Record<string, number> = {};
-        
+        // Por operador: agregamos total e última atividade (timestamp ms)
+        const caixasMap: Record<string, { total: number; lastAt: number }> = {};
+
         rechargesSnap.forEach(d => {
           const data = d.data();
           const amount = data.amount_cents || 0;
           sumRecharges += amount;
           const op = data.operator_name || "Desconhecido";
-          caixasMap[op] = (caixasMap[op] || 0) + amount;
+          const ts = data.created_at?.toMillis ? data.created_at.toMillis() : 0;
+          if (!caixasMap[op]) caixasMap[op] = { total: 0, lastAt: 0 };
+          caixasMap[op].total += amount;
+          if (ts > caixasMap[op].lastAt) caixasMap[op].lastAt = ts;
         });
-        
+
         setTotalRecharges(sumRecharges);
-        setCaixas(Object.entries(caixasMap).map(([name, total]) => ({name, total})).sort((a, b) => b.total - a.total));
+        // Ordem cronológica reversa: o caixa que registrou venda mais recente vem primeiro
+        setCaixas(
+          Object.entries(caixasMap)
+            .map(([name, agg]) => ({ name, total: agg.total, lastAt: agg.lastAt }))
+            .sort((a, b) => b.lastAt - a.lastAt)
+        );
 
         // 2. Saldo Retido
         const usersSnap = await getDocs(collection(db, "users"));
@@ -149,40 +158,7 @@ function AdminRelatorioContent() {
         </div>
       </div>
 
-      <section className="space-y-4">
-        <h3 className="font-semibold text-[hsl(var(--text-primary))] flex items-center gap-2">
-          <Users className="w-4 h-4 text-primary" /> Fechamento por Caixa
-        </h3>
-        {loading ? (
-          <div className="flex justify-center py-4">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
-          </div>
-        ) : caixas.length === 0 ? (
-          <div className="glass-card p-6 text-center text-[hsl(var(--text-muted))]">
-            <p>Nenhuma recarga registrada.</p>
-          </div>
-        ) : (
-          <div className="glass-card overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-[hsl(var(--bg))]/50">
-                  <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase">Operador</th>
-                  <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Arrecadado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[hsl(var(--border))]/30">
-                {caixas.map((c, i) => (
-                  <tr key={i} className="hover:bg-[hsl(var(--bg))]/30 transition-colors">
-                    <td className="py-3 px-4 font-medium text-[hsl(var(--text-primary))] text-sm">{c.name}</td>
-                    <td className="py-3 px-4 text-right font-bold text-primary">{formatCurrency(c.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
+      {/* Barracas movidas para CIMA — destaque visual prioritário */}
       <section className="space-y-4">
         <h3 className="font-semibold text-[hsl(var(--text-primary))] flex items-center gap-2">
           <Store className="w-4 h-4 text-primary" /> Desempenho das Barracas
@@ -261,6 +237,58 @@ function AdminRelatorioContent() {
               )}
             </div>
           ))
+        )}
+      </section>
+
+      {/* Fechamento por Caixa — agora abaixo das barracas, ordenado por chegada
+          (mais recente primeiro) e limitado a 3 com link "ver tudo". */}
+      <section className="space-y-4">
+        <h3 className="font-semibold text-[hsl(var(--text-primary))] flex items-center gap-2">
+          <Users className="w-4 h-4 text-primary" /> Fechamento por Caixa
+        </h3>
+        {loading ? (
+          <div className="flex justify-center py-4">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        ) : caixas.length === 0 ? (
+          <div className="glass-card p-6 text-center text-[hsl(var(--text-muted))]">
+            <p>Nenhuma recarga registrada.</p>
+          </div>
+        ) : (
+          <>
+            <div className="glass-card overflow-hidden">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-[hsl(var(--bg))]/50">
+                    <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase">Operador</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Arrecadado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[hsl(var(--border))]/30">
+                  {caixas.slice(0, 3).map((c, i) => (
+                    <tr key={i} className="hover:bg-[hsl(var(--bg))]/30 transition-colors">
+                      <td className="py-3 px-4 font-medium text-[hsl(var(--text-primary))] text-sm">{c.name}</td>
+                      <td className="py-3 px-4 text-right font-bold text-primary">{formatCurrency(c.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {caixas.length > 3 && (
+              <Link
+                href="/admin/relatorio/caixas"
+                className="block w-full py-3 px-4 rounded-xl border border-dashed border-[hsl(var(--border))] hover:border-primary/60 hover:bg-primary/5 transition-colors text-center group"
+              >
+                <div className="flex items-center justify-center gap-2 text-[hsl(var(--text-secondary))] group-hover:text-primary transition-colors">
+                  <MoreHorizontal className="w-4 h-4" />
+                  <span className="text-sm font-medium">
+                    Ver fechamento de todos os caixas ({caixas.length})
+                  </span>
+                </div>
+              </Link>
+            )}
+          </>
         )}
       </section>
     </div>

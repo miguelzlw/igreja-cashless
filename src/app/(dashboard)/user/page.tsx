@@ -377,11 +377,6 @@ export default function UserDashboard() {
         </button>
       </section>
 
-      {/* Histórico */}
-      <section>
-        <TransactionHistory userId={user.uid} />
-      </section>
-
       {/* Cardápio da Festa */}
       <section className="space-y-3">
         <div className="flex items-center gap-2 mb-1">
@@ -450,6 +445,11 @@ export default function UserDashboard() {
             </div>
           ))
         )}
+      </section>
+
+      {/* Histórico de Transações (limitado a 3 com link "ver tudo") */}
+      <section>
+        <TransactionHistory userId={user.uid} limit={3} />
       </section>
 
       {/* Modal QR Code */}

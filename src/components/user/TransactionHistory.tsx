@@ -1,28 +1,34 @@
 import { useEffect, useState } from "react";
-import { collection, query, where, orderBy, getDocs, limit } from "firebase/firestore";
+import Link from "next/link";
+import { collection, query, where, orderBy, getDocs, limit as firestoreLimit } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { formatCurrency, formatDate } from "@/lib/utils/formatters";
 import type { Transaction } from "@/lib/types";
-import { ArrowDownRight, ArrowUpRight, Clock } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Clock, MoreHorizontal } from "lucide-react";
 
 interface TransactionHistoryProps {
   userId: string;
+  /** Limita quantos itens mostrar. Quando informado e existem mais, exibe link "ver tudo". */
+  limit?: number;
 }
 
-export default function TransactionHistory({ userId }: TransactionHistoryProps) {
+export default function TransactionHistory({ userId, limit }: TransactionHistoryProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
 
     const fetchTransactions = async () => {
       try {
+        // Sempre lê N+1 quando limit for usado, pra saber se há "mais"
+        const fetchSize = limit ? limit + 1 : 50;
         const q = query(
           collection(db, "transactions"),
           where("user_id", "==", userId),
           orderBy("created_at", "desc"),
-          limit(20)
+          firestoreLimit(fetchSize)
         );
 
         const snap = await getDocs(q);
@@ -30,8 +36,14 @@ export default function TransactionHistory({ userId }: TransactionHistoryProps) 
         snap.forEach((doc) => {
           txs.push({ id: doc.id, ...doc.data() } as Transaction);
         });
-        
-        setTransactions(txs);
+
+        if (limit && txs.length > limit) {
+          setHasMore(true);
+          setTransactions(txs.slice(0, limit));
+        } else {
+          setHasMore(false);
+          setTransactions(txs);
+        }
       } catch (error) {
         console.error("Erro ao buscar histórico:", error);
       } finally {
@@ -40,7 +52,7 @@ export default function TransactionHistory({ userId }: TransactionHistoryProps) 
     };
 
     fetchTransactions();
-  }, [userId]);
+  }, [userId, limit]);
 
   if (loading) {
     return (
@@ -109,6 +121,18 @@ export default function TransactionHistory({ userId }: TransactionHistoryProps) 
           );
         })}
       </div>
+
+      {hasMore && (
+        <Link
+          href="/user/extrato"
+          className="block w-full mt-2 py-3 px-4 rounded-xl border border-dashed border-[hsl(var(--border))] hover:border-primary/60 hover:bg-primary/5 transition-colors text-center group"
+        >
+          <div className="flex items-center justify-center gap-2 text-[hsl(var(--text-secondary))] group-hover:text-primary transition-colors">
+            <MoreHorizontal className="w-4 h-4" />
+            <span className="text-sm font-medium">Ver extrato completo</span>
+          </div>
+        </Link>
+      )}
     </div>
   );
 }
