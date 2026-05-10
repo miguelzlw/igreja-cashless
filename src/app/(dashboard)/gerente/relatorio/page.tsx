@@ -95,32 +95,41 @@ function RelatorioContent() {
                 <tr className="bg-[hsl(var(--bg))]/50">
                   <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase">Produto</th>
                   <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Preço</th>
-                  <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Estoque Restante</th>
+                  <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Vendidos</th>
+                  <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Estoque</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[hsl(var(--border))]/30">
-                {products.map((p) => (
-                  <tr key={p.id} className="hover:bg-[hsl(var(--bg))]/30 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        {p.emoji && <span className="text-lg">{p.emoji}</span>}
-                        <span className="font-medium text-[hsl(var(--text-primary))] text-sm">{p.name}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-right font-medium text-primary text-sm">
-                      {formatCurrency(p.price_cents)}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      {p.stock === -1 ? (
-                        <span className="text-xs font-semibold text-emerald-500">Ilimitado</span>
-                      ) : (
-                        <span className={`text-sm font-bold ${p.stock === 0 ? 'text-danger' : p.stock <= 5 ? 'text-warning' : 'text-[hsl(var(--text-primary))]'}`}>
-                          {p.stock}
+                {products.map((p) => {
+                  const sold = (p as ProductDoc & { units_sold?: number }).units_sold ?? 0;
+                  return (
+                    <tr key={p.id} className="hover:bg-[hsl(var(--bg))]/30 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          {p.emoji && <span className="text-lg">{p.emoji}</span>}
+                          <span className="font-medium text-[hsl(var(--text-primary))] text-sm">{p.name}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-right font-medium text-primary text-sm">
+                        {formatCurrency(p.price_cents)}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <span className={`text-sm font-bold ${sold > 0 ? "text-emerald-500" : "text-[hsl(var(--text-muted))]"}`}>
+                          {sold}
                         </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {p.stock === -1 ? (
+                          <span className="text-xs font-semibold text-emerald-500">Ilimitado</span>
+                        ) : (
+                          <span className={`text-sm font-bold ${p.stock === 0 ? 'text-danger' : p.stock <= 5 ? 'text-warning' : 'text-[hsl(var(--text-primary))]'}`}>
+                            {p.stock}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

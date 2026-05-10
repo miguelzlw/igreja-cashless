@@ -121,15 +121,22 @@ export const processPayment = onCall(
 
       const now = admin.firestore.FieldValue.serverTimestamp();
 
-      // Verificar e decrementar estoque de cada produto
-      for (const item of validatedItems) {
-        const productRef = db
-          .collection("stalls")
-          .doc(stallId)
-          .collection("products")
-          .doc(item.product_id);
-        const productSnap = await tx.get(productRef);
+      // PRIMEIRO: ler todos os produtos (transações Firestore exigem todas as
+      // leituras ANTES de qualquer escrita — fazer read-after-write quebra).
+      const productReads = await Promise.all(
+        validatedItems.map(async (item) => {
+          const productRef = db
+            .collection("stalls")
+            .doc(stallId)
+            .collection("products")
+            .doc(item.product_id);
+          const snap = await tx.get(productRef);
+          return { item, ref: productRef, snap };
+        })
+      );
 
+      // DEPOIS: validar estoque e gravar todas as atualizações
+      for (const { item, ref: productRef, snap: productSnap } of productReads) {
         if (!productSnap.exists) {
           throw Errors.NOT_FOUND(`Produto "${item.name}"`);
         }
