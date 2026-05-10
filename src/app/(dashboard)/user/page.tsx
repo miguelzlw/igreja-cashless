@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { db } from "@/lib/firebase/config";
 import { auth } from "@/lib/firebase/config";
@@ -10,9 +10,10 @@ import UserBalanceCard from "@/components/user/UserBalanceCard";
 import QRCodeModal from "@/components/user/QRCodeModal";
 import TransactionHistory from "@/components/user/TransactionHistory";
 import { formatCurrency } from "@/lib/utils/formatters";
+import { MAX_BALANCE_CENTS, MIN_PIX_CENTS } from "@/lib/config/limits";
 import {
   QrCode, BookOpen, Store, Loader2, ChevronDown, ChevronUp, X,
-  CheckCircle2, Copy, Clock, RefreshCw, AlertTriangle
+  CheckCircle2, Copy, Clock, RefreshCw, AlertTriangle, Info
 } from "lucide-react";
 
 const PIX_AMOUNTS = [500, 1000, 2000, 5000, 10000]; // centavos — Asaas exige mínimo de R$ 5,00
@@ -239,8 +240,21 @@ export default function UserDashboard() {
 
   const handleGeneratePix = useCallback(async () => {
     const amountCents = parseInt(pixAmount.replace(/\D/g, ""));
-    if (isNaN(amountCents) || amountCents < 500) {
-      setPixError("Valor mínimo: R$ 5,00");
+    if (isNaN(amountCents) || amountCents < MIN_PIX_CENTS) {
+      setPixError(`Valor mínimo: ${formatCurrency(MIN_PIX_CENTS)}`);
+      return;
+    }
+
+    // Validação client-side do teto de saldo (servidor revalida com PIX pendentes).
+    // Aqui usamos só o saldo atual — não temos visibilidade dos PIX pendentes no cliente.
+    const currentBalance = userDoc?.balance ?? 0;
+    if (currentBalance + amountCents > MAX_BALANCE_CENTS) {
+      const room = Math.max(0, MAX_BALANCE_CENTS - currentBalance);
+      if (room < MIN_PIX_CENTS) {
+        setPixError(`Você já está perto do limite de ${formatCurrency(MAX_BALANCE_CENTS)}. Use um pouco do saldo antes de recarregar.`);
+      } else {
+        setPixError(`Essa recarga ultrapassaria o limite de ${formatCurrency(MAX_BALANCE_CENTS)}. Recarga máxima agora: ${formatCurrency(room)}.`);
+      }
       return;
     }
 
@@ -398,104 +412,117 @@ export default function UserDashboard() {
           </div>
         ) : (
           <div className="space-y-3">
-            {/* Grade 2 colunas de barracas */}
-            <div className="grid grid-cols-2 gap-3">
-              {menu.map(stall => {
-                const isSelected = expandedStall === stall.id;
+            {/* Renderiza fileira por fileira (2 barracas) e insere o painel
+                de produtos LOGO ABAIXO da fileira que contém a barraca clicada.
+                Assim o usuário não precisa rolar até o fim de 40 barracas. */}
+            {(() => {
+              const rows: typeof menu[] = [];
+              for (let i = 0; i < menu.length; i += 2) {
+                rows.push(menu.slice(i, i + 2));
+              }
+
+              return rows.map((row, rowIdx) => {
+                const expandedInRow = row.find(s => s.id === expandedStall);
                 return (
-                  <button
-                    key={stall.id}
-                    onClick={() => setExpandedStall(isSelected ? null : stall.id)}
-                    className={`relative glass-card p-4 flex flex-col items-center text-center gap-2 transition-all duration-200 rounded-2xl border ${
-                      isSelected
-                        ? "border-primary/50 bg-primary/5 shadow-lg shadow-primary/10"
-                        : "border-transparent hover:border-primary/20 hover:bg-[hsl(var(--card))]/60"
-                    }`}
-                  >
-                    {/* Ícone */}
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                      isSelected ? "bg-primary/20" : "bg-primary/10"
-                    }`}>
-                      <Store className={`w-6 h-6 transition-colors ${isSelected ? "text-primary" : "text-primary/70"}`} />
-                    </div>
-
-                    {/* Nome */}
-                    <p className={`font-bold text-sm leading-tight transition-colors ${
-                      isSelected ? "text-primary" : "text-[hsl(var(--text-primary))]"
-                    }`}>
-                      {stall.name}
-                    </p>
-
-                    {/* Contagem */}
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
-                      isSelected
-                        ? "bg-primary/15 text-primary"
-                        : "bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]"
-                    }`}>
-                      {stall.products.length} {stall.products.length !== 1 ? "itens" : "item"}
-                    </span>
-
-                    {/* Chevron */}
-                    <div className={`absolute bottom-2 right-2 transition-transform duration-200 ${isSelected ? "rotate-180" : ""}`}>
-                      <ChevronDown className={`w-4 h-4 ${isSelected ? "text-primary" : "text-[hsl(var(--text-muted))]"}`} />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Painel de produtos expandido (full-width abaixo da grade) */}
-            {expandedStall && (() => {
-              const stall = menu.find(s => s.id === expandedStall);
-              if (!stall) return null;
-              return (
-                <div className="glass-card overflow-hidden animate-slide-down rounded-2xl border border-primary/20">
-                  {/* Cabeçalho do painel */}
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))]/40 bg-primary/5">
-                    <div className="flex items-center gap-2">
-                      <Store className="w-4 h-4 text-primary" />
-                      <p className="font-bold text-[hsl(var(--text-primary))] text-sm">{stall.name}</p>
-                    </div>
-                    <button
-                      onClick={() => setExpandedStall(null)}
-                      className="p-1 rounded-full hover:bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]"
-                    >
-                      <ChevronUp className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {/* Lista de produtos */}
-                  <div className="divide-y divide-[hsl(var(--border))]/30">
-                    {stall.products.length === 0 ? (
-                      <p className="text-sm text-center text-[hsl(var(--text-muted))] py-6">
-                        Nenhum produto cadastrado ainda.
-                      </p>
-                    ) : (
-                      stall.products.map(product => (
-                        <div key={product.id} className="flex items-center justify-between px-4 py-3 hover:bg-[hsl(var(--bg))]/30 transition-colors">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {product.emoji
-                              ? <span className="text-2xl shrink-0">{product.emoji}</span>
-                              : <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                                  <Store className="w-4 h-4 text-primary/50" />
-                                </div>
-                            }
-                            <div className="min-w-0">
-                              <p className="font-medium text-[hsl(var(--text-primary))] text-sm truncate">{product.name}</p>
-                              {product.stock === 0 && (
-                                <span className="text-xs text-danger font-semibold">Esgotado</span>
-                              )}
+                  <Fragment key={rowIdx}>
+                    {/* Fileira de até 2 barracas */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {row.map(stall => {
+                        const isSelected = expandedStall === stall.id;
+                        return (
+                          <button
+                            key={stall.id}
+                            onClick={() => setExpandedStall(isSelected ? null : stall.id)}
+                            className={`relative glass-card p-4 flex flex-col items-center text-center gap-2 transition-all duration-200 rounded-2xl border ${
+                              isSelected
+                                ? "border-primary/50 bg-primary/5 shadow-lg shadow-primary/10"
+                                : "border-transparent hover:border-primary/20 hover:bg-[hsl(var(--card))]/60"
+                            }`}
+                          >
+                            {/* Ícone */}
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                              isSelected ? "bg-primary/20" : "bg-primary/10"
+                            }`}>
+                              <Store className={`w-6 h-6 transition-colors ${isSelected ? "text-primary" : "text-primary/70"}`} />
                             </div>
+
+                            {/* Nome */}
+                            <p className={`font-bold text-sm leading-tight transition-colors ${
+                              isSelected ? "text-primary" : "text-[hsl(var(--text-primary))]"
+                            }`}>
+                              {stall.name}
+                            </p>
+
+                            {/* Contagem */}
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
+                              isSelected
+                                ? "bg-primary/15 text-primary"
+                                : "bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]"
+                            }`}>
+                              {stall.products.length} {stall.products.length !== 1 ? "itens" : "item"}
+                            </span>
+
+                            {/* Chevron */}
+                            <div className={`absolute bottom-2 right-2 transition-transform duration-200 ${isSelected ? "rotate-180" : ""}`}>
+                              <ChevronDown className={`w-4 h-4 ${isSelected ? "text-primary" : "text-[hsl(var(--text-muted))]"}`} />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Painel de produtos — aparece logo abaixo da fileira que contém a selecionada */}
+                    {expandedInRow && (
+                      <div className="glass-card overflow-hidden animate-slide-down rounded-2xl border border-primary/20">
+                        {/* Cabeçalho do painel */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))]/40 bg-primary/5">
+                          <div className="flex items-center gap-2">
+                            <Store className="w-4 h-4 text-primary" />
+                            <p className="font-bold text-[hsl(var(--text-primary))] text-sm">{expandedInRow.name}</p>
                           </div>
-                          <p className={`font-bold text-sm shrink-0 ml-2 ${product.stock === 0 ? "text-[hsl(var(--text-muted))] line-through" : "text-primary"}`}>
-                            {formatCurrency(product.price_cents)}
-                          </p>
+                          <button
+                            onClick={() => setExpandedStall(null)}
+                            className="p-1 rounded-full hover:bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]"
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </button>
                         </div>
-                      ))
+
+                        {/* Lista de produtos */}
+                        <div className="divide-y divide-[hsl(var(--border))]/30">
+                          {expandedInRow.products.length === 0 ? (
+                            <p className="text-sm text-center text-[hsl(var(--text-muted))] py-6">
+                              Nenhum produto cadastrado ainda.
+                            </p>
+                          ) : (
+                            expandedInRow.products.map(product => (
+                              <div key={product.id} className="flex items-center justify-between px-4 py-3 hover:bg-[hsl(var(--bg))]/30 transition-colors">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  {product.emoji
+                                    ? <span className="text-2xl shrink-0">{product.emoji}</span>
+                                    : <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                        <Store className="w-4 h-4 text-primary/50" />
+                                      </div>
+                                  }
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-[hsl(var(--text-primary))] text-sm truncate">{product.name}</p>
+                                    {product.stock === 0 && (
+                                      <span className="text-xs text-danger font-semibold">Esgotado</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <p className={`font-bold text-sm shrink-0 ml-2 ${product.stock === 0 ? "text-[hsl(var(--text-muted))] line-through" : "text-primary"}`}>
+                                  {formatCurrency(product.price_cents)}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
                     )}
-                  </div>
-                </div>
-              );
+                  </Fragment>
+                );
+              });
             })()}
           </div>
         )}
@@ -621,83 +648,125 @@ export default function UserDashboard() {
               </div>
             ) : (
               /* Estado: Seleção de valor */
-              <div className="space-y-4">
-                <div className="text-center">
-                  <div className="w-14 h-14 bg-[#00B1EA]/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <QrCode className="w-7 h-7 text-[#00B1EA]" />
-                  </div>
-                  <h3 className="text-lg font-bold text-[hsl(var(--text-primary))]">Recarga via PIX</h3>
-                  <p className="text-sm text-[hsl(var(--text-secondary))]">Escolha o valor da recarga</p>
-                </div>
+              (() => {
+                const currentBalance = userDoc?.balance ?? 0;
+                const remainingRoom = Math.max(0, MAX_BALANCE_CENTS - currentBalance);
+                const atLimit = remainingRoom < MIN_PIX_CENTS;
+                const selectedAmt = pixAmount ? parseInt(pixAmount.replace(/\D/g, "")) : 0;
+                const wouldExceed = selectedAmt > 0 && currentBalance + selectedAmt > MAX_BALANCE_CENTS;
 
-                <div className="grid grid-cols-2 gap-2">
-                  {PIX_AMOUNTS.map(amt => (
+                return (
+                  <div className="space-y-4">
+                    <div className="text-center">
+                      <div className="w-14 h-14 bg-[#00B1EA]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <QrCode className="w-7 h-7 text-[#00B1EA]" />
+                      </div>
+                      <h3 className="text-lg font-bold text-[hsl(var(--text-primary))]">Recarga via PIX</h3>
+                      <p className="text-sm text-[hsl(var(--text-secondary))]">Escolha o valor da recarga</p>
+                    </div>
+
+                    {/* Card informativo do limite — sempre visível */}
+                    <div className={`rounded-xl border p-3 ${atLimit ? "bg-warning/10 border-warning/30" : "bg-primary/5 border-primary/20"}`}>
+                      <div className="flex gap-2.5">
+                        <Info className={`w-4 h-4 shrink-0 mt-0.5 ${atLimit ? "text-warning" : "text-primary"}`} />
+                        <div className="text-xs space-y-1.5 flex-1">
+                          <p className={`font-bold ${atLimit ? "text-warning" : "text-[hsl(var(--text-primary))]"}`}>
+                            Limite de saldo: {formatCurrency(MAX_BALANCE_CENTS)}
+                          </p>
+                          <div className="flex items-center justify-between text-[hsl(var(--text-secondary))]">
+                            <span>Saldo atual:</span>
+                            <span className="font-semibold text-[hsl(var(--text-primary))]">{formatCurrency(currentBalance)}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[hsl(var(--text-secondary))]">
+                            <span>Pode recarregar até:</span>
+                            <span className={`font-bold ${atLimit ? "text-warning" : "text-emerald-500"}`}>
+                              {formatCurrency(remainingRoom)}
+                            </span>
+                          </div>
+                          {atLimit && (
+                            <p className="text-warning pt-1">
+                              Você está perto do limite. Use o saldo antes de recarregar.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {PIX_AMOUNTS.filter(amt => currentBalance + amt <= MAX_BALANCE_CENTS).map(amt => (
+                        <button
+                          key={amt}
+                          onClick={() => setPixAmount(String(amt))}
+                          className={`py-3 rounded-xl text-center font-bold transition-all border ${
+                            pixAmount === String(amt)
+                              ? "bg-primary text-white border-primary"
+                              : "border-[hsl(var(--border))] text-[hsl(var(--text-primary))] hover:border-primary/50"
+                          }`}
+                        >
+                          {formatCurrency(amt)}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[hsl(var(--text-muted))] font-medium">R$</span>
+                      <input
+                        type="text"
+                        className={`input text-lg font-bold pl-12 h-14 ${wouldExceed ? "border-warning focus:border-warning" : ""}`}
+                        placeholder="Outro valor..."
+                        value={pixAmount ? formatCurrency(parseInt(pixAmount)).replace("R$", "").trim() : ""}
+                        onChange={e => {
+                          const v = e.target.value.replace(/\D/g, "");
+                          setPixAmount(v ? String(parseInt(v) * 100) : "");
+                        }}
+                      />
+                      {wouldExceed && (
+                        <p className="text-xs text-warning mt-1.5 font-medium">
+                          Esse valor ultrapassa o limite. Máximo agora: {formatCurrency(remainingRoom)}.
+                        </p>
+                      )}
+                    </div>
+
+                    {!userDoc?.cpf && (
+                      <div>
+                        <label className="block text-xs font-medium text-[hsl(var(--text-secondary))] mb-1.5">
+                          CPF ou CNPJ <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          className="input h-12"
+                          placeholder="000.000.000-00"
+                          value={formatCpfCnpj(pixCpf)}
+                          onChange={e => setPixCpf(e.target.value.replace(/\D/g, "").slice(0, 14))}
+                        />
+                        <p className="text-[10px] text-[hsl(var(--text-muted))] mt-1">
+                          Exigido pelo Asaas para gerar o PIX. Salvamos para você não precisar digitar de novo.
+                        </p>
+                      </div>
+                    )}
+
+                    {pixError && (
+                      <p className="text-sm text-danger bg-danger/10 p-2 rounded-lg text-center">{pixError}</p>
+                    )}
+
                     <button
-                      key={amt}
-                      onClick={() => setPixAmount(String(amt))}
-                      className={`py-3 rounded-xl text-center font-bold transition-all border ${
-                        pixAmount === String(amt)
-                          ? "bg-primary text-white border-primary"
-                          : "border-[hsl(var(--border))] text-[hsl(var(--text-primary))] hover:border-primary/50"
-                      }`}
+                      onClick={handleGeneratePix}
+                      disabled={pixLoading || !pixAmount || wouldExceed || atLimit || (!userDoc?.cpf && pixCpf.replace(/\D/g, "").length < 11)}
+                      className="btn-primary w-full py-4 text-base flex items-center justify-center gap-2"
                     >
-                      {formatCurrency(amt)}
+                      {pixLoading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <QrCode className="w-5 h-5" />
+                          Gerar QR Code PIX
+                        </>
+                      )}
                     </button>
-                  ))}
-                </div>
-
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[hsl(var(--text-muted))] font-medium">R$</span>
-                  <input
-                    type="text"
-                    className="input text-lg font-bold pl-12 h-14"
-                    placeholder="Outro valor..."
-                    value={pixAmount ? formatCurrency(parseInt(pixAmount)).replace("R$", "").trim() : ""}
-                    onChange={e => {
-                      const v = e.target.value.replace(/\D/g, "");
-                      setPixAmount(v ? String(parseInt(v) * 100) : "");
-                    }}
-                  />
-                </div>
-
-                {!userDoc?.cpf && (
-                  <div>
-                    <label className="block text-xs font-medium text-[hsl(var(--text-secondary))] mb-1.5">
-                      CPF ou CNPJ <span className="text-danger">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      className="input h-12"
-                      placeholder="000.000.000-00"
-                      value={formatCpfCnpj(pixCpf)}
-                      onChange={e => setPixCpf(e.target.value.replace(/\D/g, "").slice(0, 14))}
-                    />
-                    <p className="text-[10px] text-[hsl(var(--text-muted))] mt-1">
-                      Exigido pelo Asaas para gerar o PIX. Salvamos para você não precisar digitar de novo.
-                    </p>
                   </div>
-                )}
-
-                {pixError && (
-                  <p className="text-sm text-danger bg-danger/10 p-2 rounded-lg text-center">{pixError}</p>
-                )}
-
-                <button
-                  onClick={handleGeneratePix}
-                  disabled={pixLoading || !pixAmount || (!userDoc?.cpf && pixCpf.replace(/\D/g, "").length < 11)}
-                  className="btn-primary w-full py-4 text-base flex items-center justify-center gap-2"
-                >
-                  {pixLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <>
-                      <QrCode className="w-5 h-5" />
-                      Gerar QR Code PIX
-                    </>
-                  )}
-                </button>
-              </div>
+                );
+              })()
             )}
           </div>
         </div>
