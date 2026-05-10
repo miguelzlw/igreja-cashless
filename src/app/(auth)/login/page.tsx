@@ -233,77 +233,137 @@ export default function LoginPage() {
       {showResetModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !resetLoading && setShowResetModal(false)} />
-          <div className="relative w-full max-w-sm glass-card p-6 space-y-4 animate-slide-up shadow-2xl rounded-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-[hsl(var(--text-primary))]">Recuperar Senha</h3>
-              <button
-                onClick={() => setShowResetModal(false)}
-                disabled={resetLoading}
-                className="p-1.5 rounded-full hover:bg-[hsl(var(--bg))] text-[hsl(var(--text-secondary))]"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+          <div className="relative w-full max-w-sm glass-card overflow-hidden animate-slide-up shadow-2xl rounded-2xl">
+
+            {/* Header com gradiente */}
+            <div className="bg-gradient-to-br from-primary/20 via-primary/10 to-transparent px-6 pt-6 pb-5 border-b border-[hsl(var(--border))]/40">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-[hsl(var(--text-primary))] leading-tight">Recuperar Senha</h3>
+                    <p className="text-xs text-[hsl(var(--text-muted))] mt-0.5">Enviaremos um link para seu e-mail</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowResetModal(false)}
+                  disabled={resetLoading}
+                  className="p-1.5 rounded-full hover:bg-[hsl(var(--bg))] text-[hsl(var(--text-secondary))] shrink-0 mt-0.5"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
-            <p className="text-sm text-[hsl(var(--text-secondary))]">
-              Informe seu e-mail de cadastro. Enviaremos um link para você redefinir sua senha.
-            </p>
+            <div className="px-6 py-5 space-y-4">
+              {/* Aviso de SPAM — escancarado */}
+              {!resetSuccess && (
+                <div className="flex gap-3 bg-amber-500/10 border border-amber-500/25 rounded-xl p-3.5">
+                  <span className="text-xl shrink-0 mt-0.5">📬</span>
+                  <div className="text-xs text-amber-400 leading-relaxed space-y-1">
+                    <p className="font-bold text-sm text-amber-300">Verifique o SPAM!</p>
+                    <p>
+                      O e-mail de recuperação <strong>quase sempre cai na pasta de Spam</strong> ou Lixo Eletrônico.
+                      Se não aparecer na caixa de entrada em 1 minuto, <strong>abra o Spam antes de tentar de novo</strong>.
+                    </p>
+                  </div>
+                </div>
+              )}
 
-            {resetError && (
-              <p className="text-sm text-danger bg-danger/10 p-2 rounded-lg">{resetError}</p>
-            )}
-            {resetSuccess && (
-              <p className="text-sm text-emerald-500 bg-emerald-500/10 p-2 rounded-lg flex items-center gap-2">
-                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                {resetSuccess}
-              </p>
-            )}
-
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              if (!resetEmail.trim()) return;
-              setResetLoading(true);
-              setResetError("");
-              setResetSuccess("");
-              try {
-                await resetPassword(resetEmail.trim());
-                setResetSuccess("E-mail enviado! Verifique sua caixa de entrada (e spam).");
-              } catch (err: unknown) {
-                const firebaseError = err as { code?: string };
-                setResetError(getFirebaseErrorMessage(firebaseError.code || ""));
-              } finally {
-                setResetLoading(false);
-              }
-            }} className="space-y-3">
-              <input
-                type="email"
-                value={resetEmail}
-                onChange={(e) => setResetEmail(e.target.value)}
-                placeholder="seu@email.com"
-                required
-                className="input"
-                disabled={resetLoading}
-                autoFocus
-              />
-              <button
-                type="submit"
-                disabled={resetLoading || !resetEmail.trim()}
-                className="btn-primary w-full py-3 flex items-center justify-center gap-2"
-              >
-                {resetLoading ? (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              {resetError && (
+                <div className="flex items-center gap-2 text-sm text-danger bg-danger/10 border border-danger/20 p-3 rounded-xl">
+                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
-                )}
-                Enviar Link de Recuperação
-              </button>
-            </form>
+                  {resetError}
+                </div>
+              )}
+
+              {resetSuccess ? (
+                /* Estado de sucesso */
+                <div className="text-center py-4 space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 mx-auto flex items-center justify-center">
+                    <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-bold text-[hsl(var(--text-primary))]">E-mail enviado!</p>
+                    <p className="text-sm text-[hsl(var(--text-secondary))] mt-1">
+                      Verifique <strong>{resetEmail}</strong>
+                    </p>
+                  </div>
+                  {/* Aviso de spam pós-envio — ainda mais enfático */}
+                  <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-4 text-left space-y-2">
+                    <p className="text-sm font-bold text-amber-300 flex items-center gap-2">
+                      <span>⚠️</span> Não chegou na caixa de entrada?
+                    </p>
+                    <ol className="text-xs text-amber-400/90 space-y-1.5 list-none">
+                      <li className="flex gap-2"><span className="font-bold shrink-0">1.</span> Abra a pasta <strong>SPAM</strong> ou <strong>Lixo Eletrônico</strong></li>
+                      <li className="flex gap-2"><span className="font-bold shrink-0">2.</span> Procure um e-mail de <strong>noreply@...</strong></li>
+                      <li className="flex gap-2"><span className="font-bold shrink-0">3.</span> Marque como "Não é spam" e abra o link</li>
+                    </ol>
+                  </div>
+                  <button
+                    onClick={() => setShowResetModal(false)}
+                    className="btn-primary w-full py-3"
+                  >
+                    Entendi, vou verificar
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!resetEmail.trim()) return;
+                  setResetLoading(true);
+                  setResetError("");
+                  setResetSuccess("");
+                  try {
+                    await resetPassword(resetEmail.trim());
+                    setResetSuccess("enviado");
+                  } catch (err: unknown) {
+                    const firebaseError = err as { code?: string };
+                    setResetError(getFirebaseErrorMessage(firebaseError.code || ""));
+                  } finally {
+                    setResetLoading(false);
+                  }
+                }} className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-[hsl(var(--text-secondary))] mb-1.5">Seu e-mail de cadastro</label>
+                    <input
+                      type="email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="seu@email.com"
+                      required
+                      className="input"
+                      disabled={resetLoading}
+                      autoFocus
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={resetLoading || !resetEmail.trim()}
+                    className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+                  >
+                    {resetLoading ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                    {resetLoading ? "Enviando..." : "Enviar Link de Recuperação"}
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}

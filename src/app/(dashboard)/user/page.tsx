@@ -378,13 +378,13 @@ export default function UserDashboard() {
       </section>
 
       {/* Cardápio da Festa */}
-      <section className="space-y-3">
-        <div className="flex items-center gap-2 mb-1">
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-primary" />
           <h2 className="text-xl font-bold text-[hsl(var(--text-primary))]">Cardápio</h2>
         </div>
         <p className="text-sm text-[hsl(var(--text-secondary))]">
-          Veja o que cada barraca está servindo e os preços antes de ir até lá!
+          Toque em uma barraca para ver o que está servindo 🍢
         </p>
 
         {menuLoading ? (
@@ -397,53 +397,107 @@ export default function UserDashboard() {
             <p>Nenhuma barraca disponível ainda.</p>
           </div>
         ) : (
-          menu.map(stall => (
-            <div key={stall.id} className="glass-card overflow-hidden">
-              <button
-                onClick={() => setExpandedStall(expandedStall === stall.id ? null : stall.id)}
-                className="w-full p-4 flex items-center justify-between hover:bg-[hsl(var(--card))]/60 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                    <Store className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-bold text-[hsl(var(--text-primary))]">{stall.name}</p>
-                    <p className="text-xs text-[hsl(var(--text-secondary))]">
-                      {stall.products.length} ite{stall.products.length !== 1 ? "ns" : "m"}
-                    </p>
-                  </div>
-                </div>
-                {expandedStall === stall.id
-                  ? <ChevronUp className="w-5 h-5 text-[hsl(var(--text-muted))]" />
-                  : <ChevronDown className="w-5 h-5 text-[hsl(var(--text-muted))]" />
-                }
-              </button>
+          <div className="space-y-3">
+            {/* Grade 2 colunas de barracas */}
+            <div className="grid grid-cols-2 gap-3">
+              {menu.map(stall => {
+                const isSelected = expandedStall === stall.id;
+                return (
+                  <button
+                    key={stall.id}
+                    onClick={() => setExpandedStall(isSelected ? null : stall.id)}
+                    className={`relative glass-card p-4 flex flex-col items-center text-center gap-2 transition-all duration-200 rounded-2xl border ${
+                      isSelected
+                        ? "border-primary/50 bg-primary/5 shadow-lg shadow-primary/10"
+                        : "border-transparent hover:border-primary/20 hover:bg-[hsl(var(--card))]/60"
+                    }`}
+                  >
+                    {/* Ícone */}
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                      isSelected ? "bg-primary/20" : "bg-primary/10"
+                    }`}>
+                      <Store className={`w-6 h-6 transition-colors ${isSelected ? "text-primary" : "text-primary/70"}`} />
+                    </div>
 
-              {expandedStall === stall.id && (
-                <div className="px-4 pb-4 space-y-2 border-t border-[hsl(var(--border))]/50">
-                  {stall.products.length === 0 ? (
-                    <p className="text-sm text-center text-[hsl(var(--text-muted))] py-3">Nenhum produto cadastrado.</p>
-                  ) : (
-                    stall.products.map(product => (
-                      <div key={product.id} className="flex items-center justify-between py-2">
-                        <div className="flex items-center gap-2">
-                          {product.emoji && <span className="text-xl">{product.emoji}</span>}
-                          <div>
-                            <p className="font-medium text-[hsl(var(--text-primary))] text-sm">{product.name}</p>
-                            {product.stock === 0 && (
-                              <span className="text-xs text-danger font-medium">Esgotado</span>
-                            )}
-                          </div>
-                        </div>
-                        <p className="font-bold text-primary">{formatCurrency(product.price_cents)}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
+                    {/* Nome */}
+                    <p className={`font-bold text-sm leading-tight transition-colors ${
+                      isSelected ? "text-primary" : "text-[hsl(var(--text-primary))]"
+                    }`}>
+                      {stall.name}
+                    </p>
+
+                    {/* Contagem */}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
+                      isSelected
+                        ? "bg-primary/15 text-primary"
+                        : "bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]"
+                    }`}>
+                      {stall.products.length} {stall.products.length !== 1 ? "itens" : "item"}
+                    </span>
+
+                    {/* Chevron */}
+                    <div className={`absolute bottom-2 right-2 transition-transform duration-200 ${isSelected ? "rotate-180" : ""}`}>
+                      <ChevronDown className={`w-4 h-4 ${isSelected ? "text-primary" : "text-[hsl(var(--text-muted))]"}`} />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-          ))
+
+            {/* Painel de produtos expandido (full-width abaixo da grade) */}
+            {expandedStall && (() => {
+              const stall = menu.find(s => s.id === expandedStall);
+              if (!stall) return null;
+              return (
+                <div className="glass-card overflow-hidden animate-slide-down rounded-2xl border border-primary/20">
+                  {/* Cabeçalho do painel */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))]/40 bg-primary/5">
+                    <div className="flex items-center gap-2">
+                      <Store className="w-4 h-4 text-primary" />
+                      <p className="font-bold text-[hsl(var(--text-primary))] text-sm">{stall.name}</p>
+                    </div>
+                    <button
+                      onClick={() => setExpandedStall(null)}
+                      className="p-1 rounded-full hover:bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Lista de produtos */}
+                  <div className="divide-y divide-[hsl(var(--border))]/30">
+                    {stall.products.length === 0 ? (
+                      <p className="text-sm text-center text-[hsl(var(--text-muted))] py-6">
+                        Nenhum produto cadastrado ainda.
+                      </p>
+                    ) : (
+                      stall.products.map(product => (
+                        <div key={product.id} className="flex items-center justify-between px-4 py-3 hover:bg-[hsl(var(--bg))]/30 transition-colors">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {product.emoji
+                              ? <span className="text-2xl shrink-0">{product.emoji}</span>
+                              : <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                  <Store className="w-4 h-4 text-primary/50" />
+                                </div>
+                            }
+                            <div className="min-w-0">
+                              <p className="font-medium text-[hsl(var(--text-primary))] text-sm truncate">{product.name}</p>
+                              {product.stock === 0 && (
+                                <span className="text-xs text-danger font-semibold">Esgotado</span>
+                              )}
+                            </div>
+                          </div>
+                          <p className={`font-bold text-sm shrink-0 ml-2 ${product.stock === 0 ? "text-[hsl(var(--text-muted))] line-through" : "text-primary"}`}>
+                            {formatCurrency(product.price_cents)}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         )}
       </section>
 
