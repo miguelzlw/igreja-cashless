@@ -20,6 +20,7 @@ export interface UserDoc {
   qr_hmac: string;
   stall_id?: string;   // vendedor e gerente_barraca
   stall_name?: string; // cache do nome (para exibição rápida)
+  cpf?: string;        // CPF/CNPJ (apenas dígitos) — exigido pelo Asaas para PIX
   created_at: Date;
   updated_at?: Date;
 }
