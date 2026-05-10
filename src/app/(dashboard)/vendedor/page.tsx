@@ -425,13 +425,32 @@ export default function VendedorDashboard() {
   // Tela do Carrinho
   if (showCart) {
     return (
-      <div className="max-w-md mx-auto px-4 py-6 space-y-4 animate-slide-up pb-32">
+      <div className="max-w-md mx-auto px-4 py-6 space-y-4 animate-slide-up">
         <header className="flex items-center gap-3">
           <button onClick={() => setShowCart(false)} className="p-2 rounded-full hover:bg-[hsl(var(--card))]">
             <X className="w-5 h-5 text-[hsl(var(--text-secondary))]" />
           </button>
           <h1 className="text-xl font-bold text-[hsl(var(--text-primary))]">Carrinho</h1>
         </header>
+
+        {/* CTA fixo no topo: total + botão de cobrar (sempre visível) */}
+        {cart.length > 0 && (
+          <div className="sticky top-2 z-20 glass-card p-4 border-l-4 border-l-primary shadow-xl space-y-3 animate-slide-down">
+            <div className="flex items-center justify-between">
+              <span className="text-[hsl(var(--text-secondary))] font-medium text-sm">
+                Total ({cartCount} {cartCount === 1 ? "item" : "itens"})
+              </span>
+              <span className="text-2xl font-black text-primary">{formatCurrency(cartTotal)}</span>
+            </div>
+            <button
+              onClick={startCheckout}
+              className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-2"
+            >
+              <ScanLine className="w-5 h-5" />
+              Escanear QR do Cliente
+            </button>
+          </div>
+        )}
 
         {cart.length === 0 ? (
           <div className="glass-card p-8 text-center text-[hsl(var(--text-muted))]">
@@ -465,21 +484,6 @@ export default function VendedorDashboard() {
             ))}
           </div>
         )}
-
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[hsl(var(--bg))]/90 backdrop-blur border-t border-[hsl(var(--border))]/50 space-y-3">
-          <div className="flex items-center justify-between max-w-md mx-auto">
-            <span className="text-[hsl(var(--text-secondary))] font-medium">Total ({cartCount} itens)</span>
-            <span className="text-2xl font-black text-primary">{formatCurrency(cartTotal)}</span>
-          </div>
-          <button
-            onClick={startCheckout}
-            disabled={cart.length === 0}
-            className="btn-primary w-full max-w-md mx-auto py-4 text-lg flex items-center justify-center gap-2"
-          >
-            <ScanLine className="w-5 h-5" />
-            Escanear QR do Cliente
-          </button>
-        </div>
       </div>
     );
   }

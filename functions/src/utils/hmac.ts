@@ -52,8 +52,13 @@ export function generateQRPayload(uid: string): string {
 }
 
 /**
- * Decodifica e valida o payload do QR Code
- * Retorna o objeto com UID e a indicação is_temp, nulo se for inválido
+ * Decodifica e valida o payload do QR Code (verificação HMAC server-side).
+ * Retorna o objeto com UID e a indicação is_temp, nulo se for inválido.
+ *
+ * NOTA: usar essa função exige que o QR tenha sido gerado com o mesmo HMAC_SECRET
+ * que o servidor conhece. O cliente atual gera HMAC localmente com outra fórmula,
+ * por isso essa função normalmente falha — use `parseQRPayload` + comparação contra
+ * `qr_hmac` armazenado no documento do usuário.
  */
 export function parseAndVerifyQR(payload: string): { uid: string, is_temp: boolean } | null {
   const parts = payload.split(":");
@@ -71,4 +76,31 @@ export function parseAndVerifyQR(payload: string): { uid: string, is_temp: boole
   }
 
   return null;
+}
+
+/**
+ * Parseia o payload do QR Code sem verificar (apenas extrai uid e hmac).
+ * A verificação fica a cargo do chamador, comparando o hmac com o valor
+ * `qr_hmac` armazenado no documento do usuário/ficha (constant-time).
+ */
+export function parseQRPayload(payload: string): { uid: string; hmac: string; is_temp: boolean } | null {
+  const parts = payload.split(":");
+  if (parts.length !== 2) return null;
+  const [uid, hmac] = parts;
+  if (!uid || !hmac) return null;
+  return { uid, hmac, is_temp: hmac === `temp_${uid}` };
+}
+
+/**
+ * Comparação constant-time de duas strings hex/UTF-8 do mesmo tamanho.
+ * Retorna false se tamanhos diferirem (também sem leak de timing).
+ */
+export function safeEqual(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  } catch {
+    return false;
+  }
 }
