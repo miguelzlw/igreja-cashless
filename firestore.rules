@@ -18,7 +18,18 @@ service cloud.firestore {
     // ── Usuários ────────────────────────────────────────────
     match /users/{userId} {
       allow read: if isOwner(userId) || hasAnyRole(['admin', 'caixa', 'gerente_barraca', 'vendedor', 'desenvolvedor']);
-      allow create: if isOwner(userId) || hasRole('admin') || isDev();
+
+      // CREATE: usuário comum só pode criar com role="user" e balance=0.
+      // Admin/dev podem criar com qualquer role (uso operacional).
+      // Isso evita escalada de privilégio: cliente não consegue se cadastrar como admin.
+      allow create: if
+        (isOwner(userId) &&
+          request.resource.data.role == 'user' &&
+          request.resource.data.balance == 0 &&
+          !('stall_id' in request.resource.data)) ||
+        hasRole('admin') ||
+        isDev();
+
       allow update: if
         hasRole('admin') ||
         hasRole('caixa') ||
@@ -64,18 +75,16 @@ service cloud.firestore {
     }
 
     // ── Produtos (subcoleção) ───────────────────────────────
+    // IMPORTANTE: vendas (que atualizam stock/units_sold/revenue_cents)
+    // SÓ acontecem via Cloud Function processPayment (Admin SDK, ignora rules).
+    // O cliente nunca grava em produtos diretamente — assim evitamos fraude
+    // de vendedor zerando units_sold ou inflando estoque pelo console.
     match /stalls/{stallId}/products/{productId} {
       allow read: if isAuth();
       allow create, update: if
         hasRole('admin') ||
         isDev() ||
         (hasRole('gerente_barraca') && getUserStallId() == stallId);
-      // Vendedor só pode atualizar campos operacionais (estoque, contadores)
-      allow update: if
-        isDev() ||
-        (hasRole('vendedor') && getUserStallId() == stallId &&
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['stock', 'units_sold', 'revenue_cents', 'updated_at']));
       allow delete: if
         hasRole('admin') ||
         isDev() ||
@@ -83,10 +92,17 @@ service cloud.firestore {
     }
 
     // ── Contas Temporárias / Fichas ────────────────────────
+    // IMPORTANTE: alterações de saldo SÓ acontecem via Cloud Functions
+    // (rechargeBalance, processPayment, processRefund) usando Admin SDK.
+    // Cliente não pode UPDATE direto — evita vendedor/caixa forjando saldo
+    // pelo console. Vendedor precisa LER pra mostrar código da ficha antes
+    // de confirmar a venda.
     match /temp_accounts/{accountId} {
-      allow read: if hasAnyRole(['admin', 'caixa', 'desenvolvedor']);
+      allow read: if hasAnyRole(['admin', 'caixa', 'vendedor', 'gerente_barraca', 'desenvolvedor']);
       allow create: if hasRole('caixa') || hasRole('admin') || isDev();
-      allow update: if hasAnyRole(['admin', 'caixa', 'vendedor', 'desenvolvedor']);
+      // Update apenas via Cloud Functions (Admin SDK ignora rules).
+      // Permitimos dev pra debugging operacional, mas nada mais.
+      allow update: if isDev();
       allow delete: if hasRole('admin') || isDev();
     }
 
