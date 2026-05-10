@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { collection, onSnapshot, query } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { formatCurrency } from "@/lib/utils/formatters";
-import { Building2, Activity, Store, Users } from "lucide-react";
+import { Building2, Activity, Store, Users, Ticket } from "lucide-react";
 import Link from "next/link";
 import AuthGuard from "@/components/auth/AuthGuard";
 
@@ -81,15 +81,19 @@ function AdminDashboard() {
           </div>
         </Link>
 
-        <Link href="/admin/relatorio" className="block col-span-2">
-          <div className="card-interactive p-6">
-            <div className="flex items-center justify-center gap-3">
-              <Activity className="w-6 h-6 text-primary" />
-              <div>
-                <h2 className="font-bold text-[hsl(var(--text-primary))] text-center">Relatório Geral</h2>
-                <p className="text-xs text-[hsl(var(--text-secondary))] text-center mt-1">Faturamento detalhado do evento</p>
-              </div>
-            </div>
+        <Link href="/admin/fichas" className="block">
+          <div className="card-interactive p-6 text-center h-full flex flex-col items-center justify-center">
+            <Ticket className="w-8 h-8 mb-2 text-primary" />
+            <h2 className="font-bold text-[hsl(var(--text-primary))]">Fichas Físicas</h2>
+            <p className="text-xs text-[hsl(var(--text-secondary))] mt-1">Gerar e imprimir</p>
+          </div>
+        </Link>
+
+        <Link href="/admin/relatorio" className="block">
+          <div className="card-interactive p-6 text-center h-full flex flex-col items-center justify-center">
+            <Activity className="w-8 h-8 mb-2 text-primary" />
+            <h2 className="font-bold text-[hsl(var(--text-primary))]">Relatório</h2>
+            <p className="text-xs text-[hsl(var(--text-secondary))] mt-1">Faturamento detalhado</p>
           </div>
         </Link>
       </div>

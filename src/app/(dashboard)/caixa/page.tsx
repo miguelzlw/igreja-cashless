@@ -3,15 +3,13 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { db, functions } from "@/lib/firebase/config";
-import {
-  doc, getDoc, collection, serverTimestamp, writeBatch, runTransaction
-} from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import type { UserDoc } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils/formatters";
 import {
   ScanLine, Wallet, CheckCircle2, Banknote, QrCode as QrCodeIcon,
-  X, CreditCard, Loader2, ArrowLeft, Camera, Printer
+  X, CreditCard, Loader2, ArrowLeft, Camera
 } from "lucide-react";
 import QRScanner from "@/components/shared/QRScanner";
 import { playSuccessSound, playErrorSound } from "@/lib/utils/sounds";
@@ -35,11 +33,6 @@ export default function CaixaDashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [transactionError, setTransactionError] = useState("");
-
-  // Fichas físicas
-  const [showFichasModal, setShowFichasModal] = useState(false);
-  const [fichasQty, setFichasQty] = useState("10");
-  const [generatingFichas, setGeneratingFichas] = useState(false);
 
   // ── Scan QR ─────────────────────────────────────────────
 
@@ -119,59 +112,6 @@ export default function CaixaDashboard() {
     }
   };
 
-  // ── Fichas Físicas ───────────────────────────────────────
-
-  const generateFichas = async () => {
-    const qty = parseInt(fichasQty);
-    if (isNaN(qty) || qty < 1 || qty > 200) return;
-
-    setGeneratingFichas(true);
-    try {
-      // Reservar uma faixa contígua de códigos via transação atômica no contador.
-      // Isso garante que dois caixas gerando lotes ao mesmo tempo recebam faixas
-      // disjuntas — sem possibilidade de duplicata.
-      const counterRef = doc(db, "counters", "temp_account_code");
-      const startCode = await runTransaction(db, async (tx) => {
-        const snap = await tx.get(counterRef);
-        const current = snap.exists() ? (snap.data().next as number) : 1;
-        tx.set(counterRef, { next: current + qty }, { merge: true });
-        return current;
-      });
-
-      // Pré-aloca os refs e códigos da faixa reservada
-      const batch = writeBatch(db);
-      const fichaIds: Array<{ id: string; code: string }> = [];
-
-      for (let i = 0; i < qty; i++) {
-        const ref = doc(collection(db, "temp_accounts"));
-        const num = startCode + i;
-        // 4 dígitos até 9999, depois expande automaticamente (5+ dígitos)
-        const code = num <= 9999 ? String(num).padStart(4, "0") : String(num);
-
-        batch.set(ref, {
-          code,
-          balance: 0,
-          qr_hmac: `temp_${ref.id}`,
-          created_by: user!.uid,
-          created_at: serverTimestamp(),
-          status: "active",
-        });
-        fichaIds.push({ id: ref.id, code });
-      }
-
-      await batch.commit();
-
-      // Abre página de impressão
-      const params = encodeURIComponent(JSON.stringify(fichaIds));
-      window.open(`/print/fichas?data=${params}`, "_blank");
-      setShowFichasModal(false);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setGeneratingFichas(false);
-    }
-  };
-
   const resetCustomer = () => {
     setCustomer(null);
     setAmountInput("");
@@ -184,18 +124,9 @@ export default function CaixaDashboard() {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 space-y-6 animate-fade-in pb-24">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[hsl(var(--text-primary))]">Caixa de Recarga</h1>
-          <p className="text-[hsl(var(--text-secondary))] text-sm">Adicione créditos aos participantes.</p>
-        </div>
-        <button
-          onClick={() => setShowFichasModal(true)}
-          className="flex items-center gap-1.5 text-sm bg-primary/10 text-primary px-3 py-2 rounded-xl hover:bg-primary/20 transition-colors font-medium"
-        >
-          <Printer className="w-4 h-4" />
-          Fichas
-        </button>
+      <header>
+        <h1 className="text-2xl font-bold text-[hsl(var(--text-primary))]">Caixa de Recarga</h1>
+        <p className="text-[hsl(var(--text-secondary))] text-sm">Adicione créditos aos participantes.</p>
       </header>
 
       {/* TELA 1: SCANNER */}
@@ -322,54 +253,6 @@ export default function CaixaDashboard() {
         </section>
       )}
 
-      {/* Modal Fichas Físicas */}
-      {showFichasModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !generatingFichas && setShowFichasModal(false)} />
-          <div className="relative w-full max-w-sm glass-card p-6 animate-slide-up shadow-2xl rounded-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-[hsl(var(--text-primary))]">Gerar Fichas Físicas</h3>
-              <button onClick={() => setShowFichasModal(false)} disabled={generatingFichas} className="p-1.5 rounded-full hover:bg-[hsl(var(--bg))]">
-                <X className="w-5 h-5 text-[hsl(var(--text-secondary))]" />
-              </button>
-            </div>
-
-            <p className="text-sm text-[hsl(var(--text-secondary))]">
-              Gera fichas com QR Code para quem não tem smartphone. Cada ficha começa com <strong>saldo R$ 0,00</strong> e o caixa recarrega ao receber o pagamento.
-            </p>
-
-            <div>
-              <label className="block text-sm font-medium text-[hsl(var(--text-secondary))] mb-1">
-                Quantidade de fichas (máx. 200)
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="200"
-                value={fichasQty}
-                onChange={e => setFichasQty(e.target.value)}
-                className="input"
-              />
-              <p className="text-xs text-[hsl(var(--text-muted))] mt-1">Serão impressas 6 fichas por folha A4</p>
-            </div>
-
-            <button
-              onClick={generateFichas}
-              disabled={generatingFichas}
-              className="btn-primary w-full py-3 flex items-center justify-center gap-2"
-            >
-              {generatingFichas ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  <Printer className="w-4 h-4" />
-                  Gerar e Abrir Impressão
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
