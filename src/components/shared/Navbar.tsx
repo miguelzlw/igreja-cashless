@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -58,6 +58,39 @@ export default function Navbar() {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [devMenuOpen, setDevMenuOpen] = useState(false);
+
+  // Refs para detectar clique fora dos menus
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const devMenuRef = useRef<HTMLDivElement>(null);
+
+  // Fecha menus ao clicar fora ou apertar ESC
+  useEffect(() => {
+    if (!mobileMenuOpen && !devMenuOpen) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (mobileMenuOpen && userMenuRef.current && !userMenuRef.current.contains(target)) {
+        setMobileMenuOpen(false);
+      }
+      if (devMenuOpen && devMenuRef.current && !devMenuRef.current.contains(target)) {
+        setDevMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMobileMenuOpen(false);
+        setDevMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileMenuOpen, devMenuOpen]);
 
   if (!user || !userDoc) return null;
 
@@ -128,7 +161,7 @@ export default function Navbar() {
           {/* Right side */}
           <div className="flex items-center gap-2">
             {isDev && (
-              <div className="relative">
+              <div className="relative" ref={devMenuRef}>
                 <button
                   onClick={() => setDevMenuOpen(!devMenuOpen)}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-300 text-xs font-semibold hover:bg-fuchsia-500/20 transition-colors"
@@ -144,12 +177,10 @@ export default function Navbar() {
                   </svg>
                 </button>
                 {devMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setDevMenuOpen(false)} />
-                    <div
-                      className="absolute right-0 mt-2 w-56 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-2xl p-2 z-50 animate-slide-down"
-                      style={{ backdropFilter: "none" }}
-                    >
+                  <div
+                    className="absolute right-0 mt-2 w-56 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-2xl p-2 z-50 animate-slide-down"
+                    style={{ backdropFilter: "none" }}
+                  >
                       <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--text-muted))]">
                         Visualizar como
                       </p>
@@ -170,22 +201,21 @@ export default function Navbar() {
                         </button>
                       ))}
                       <div className="border-t border-[hsl(var(--border))] my-1.5" />
-                      <button
-                        onClick={handleClearImpersonation}
-                        className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[hsl(var(--text-secondary))] hover:bg-[hsl(var(--bg))] transition-colors"
-                      >
-                        <CodeIcon />
-                        Voltar ao Hub Dev
-                      </button>
-                    </div>
-                  </>
+                    <button
+                      onClick={handleClearImpersonation}
+                      className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[hsl(var(--text-secondary))] hover:bg-[hsl(var(--bg))] transition-colors"
+                    >
+                      <CodeIcon />
+                      Voltar ao Hub Dev
+                    </button>
+                  </div>
                 )}
               </div>
             )}
             <ThemeToggle />
 
             {/* User menu */}
-            <div className="relative">
+            <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-[hsl(var(--bg))] transition-colors"
@@ -203,9 +233,7 @@ export default function Navbar() {
               </button>
 
               {mobileMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-2xl p-2 z-50 animate-slide-down" style={{ backdropFilter: 'none' }}>
+                <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-2xl p-2 z-50 animate-slide-down" style={{ backdropFilter: 'none' }}>
                     <div className="px-3 py-2 border-b border-[hsl(var(--border))] mb-2">
                       <p className="text-sm font-medium text-[hsl(var(--text-primary))] truncate">{userDoc.name}</p>
                       <p className="text-xs text-[hsl(var(--text-muted))] truncate">{user.email}</p>
@@ -239,11 +267,10 @@ export default function Navbar() {
                       className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-danger hover:bg-danger/10 transition-colors"
                       id="sign-out-button"
                     >
-                      <LogoutIcon />
-                      Sair da Conta
-                    </button>
-                  </div>
-                </>
+                    <LogoutIcon />
+                    Sair da Conta
+                  </button>
+                </div>
               )}
             </div>
           </div>
