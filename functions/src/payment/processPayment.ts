@@ -73,12 +73,12 @@ export const processPayment = onCall(
       }
 
       const operatorData = operatorSnap.data()!;
-      if (!["vendedor", "gerente_barraca", "admin"].includes(operatorData.role)) {
+      if (!["vendedor", "gerente_barraca", "admin", "desenvolvedor"].includes(operatorData.role)) {
         throw Errors.PERMISSION_DENIED("processar vendas");
       }
 
-      // Verificar que o operador pertence à barraca (exceto admin)
-      if (operatorData.role !== "admin" && operatorData.stall_id !== stallId) {
+      // Verificar que o operador pertence à barraca (exceto admin/desenvolvedor)
+      if (operatorData.role !== "admin" && operatorData.role !== "desenvolvedor" && operatorData.stall_id !== stallId) {
         throw Errors.PERMISSION_DENIED("vender nesta barraca");
       }
 

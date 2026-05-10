@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { db } from "@/lib/firebase/config";
 import { auth } from "@/lib/firebase/config";
@@ -12,25 +12,76 @@ import TransactionHistory from "@/components/user/TransactionHistory";
 import { formatCurrency } from "@/lib/utils/formatters";
 import {
   QrCode, BookOpen, Store, Loader2, ChevronDown, ChevronUp, X,
-  CheckCircle2, Copy, Clock
+  CheckCircle2, Copy, Clock, RefreshCw, AlertTriangle
 } from "lucide-react";
 
 const PIX_AMOUNTS = [1000, 2000, 5000, 10000]; // centavos
+const PIX_SESSION_KEY = "pix:active";
+
+interface ActivePix {
+  payment_id: string;
+  qr_code: string;
+  copy_paste: string;
+  amount_cents: number;
+  expires_at: number; // epoch ms
+}
+
+function loadActivePix(): ActivePix | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(PIX_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ActivePix;
+    if (!parsed.payment_id || !parsed.expires_at || parsed.expires_at < Date.now()) {
+      window.sessionStorage.removeItem(PIX_SESSION_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveActivePix(pix: ActivePix | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (pix) {
+      window.sessionStorage.setItem(PIX_SESSION_KEY, JSON.stringify(pix));
+    } else {
+      window.sessionStorage.removeItem(PIX_SESSION_KEY);
+    }
+  } catch {
+    // sessionStorage indisponível — segue sem persistir
+  }
+}
+
+function formatRemaining(ms: number): string {
+  if (ms <= 0) return "0:00";
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 export default function UserDashboard() {
   const { user, userDoc } = useAuth();
   const [isQROpen, setIsQROpen] = useState(false);
   const [isPixOpen, setIsPixOpen] = useState(false);
 
-  // PIX
+  // PIX — estado
   const [pixAmount, setPixAmount] = useState("");
   const [pixLoading, setPixLoading] = useState(false);
   const [pixError, setPixError] = useState("");
   const [pixQrCode, setPixQrCode] = useState(""); // base64 image
   const [pixCopyPaste, setPixCopyPaste] = useState("");
   const [pixPaymentId, setPixPaymentId] = useState("");
+  const [pixExpiresAt, setPixExpiresAt] = useState<number | null>(null);
+  const [pixExpired, setPixExpired] = useState(false);
   const [pixConfirmed, setPixConfirmed] = useState(false);
+  const [pixRemainingMs, setPixRemainingMs] = useState(0);
+  const [manualChecking, setManualChecking] = useState(false);
   const [copied, setCopied] = useState(false);
+  const pollAttemptsRef = useRef(0);
 
   // Cardápio
   interface StallWithProducts extends StallDoc { id: string; products: ProductDoc[]; }
@@ -68,33 +119,105 @@ export default function UserDashboard() {
     return () => unsubStalls();
   }, []);
 
-  // Polling para verificar status do PIX
+  // Restaura PIX ativo do sessionStorage no mount
   useEffect(() => {
-    if (!pixPaymentId || pixConfirmed) return;
+    const saved = loadActivePix();
+    if (saved) {
+      setPixPaymentId(saved.payment_id);
+      setPixQrCode(saved.qr_code);
+      setPixCopyPaste(saved.copy_paste);
+      setPixAmount(String(saved.amount_cents));
+      setPixExpiresAt(saved.expires_at);
+      setIsPixOpen(true);
+    }
+  }, []);
 
-    const interval = setInterval(async () => {
-      try {
-        const token = await auth.currentUser?.getIdToken();
-        if (!token) return;
-
-        const res = await fetch(`/api/pix/status?payment_id=${pixPaymentId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === "CONFIRMED") {
-            setPixConfirmed(true);
-            clearInterval(interval);
-          }
-        }
-      } catch (err) {
-        console.error("Erro ao verificar status PIX:", err);
+  // Countdown do timer (1 Hz)
+  useEffect(() => {
+    if (!pixExpiresAt || pixConfirmed) return;
+    const tick = () => {
+      const remaining = pixExpiresAt - Date.now();
+      setPixRemainingMs(remaining);
+      if (remaining <= 0) {
+        setPixExpired(true);
       }
-    }, 5000); // Verifica a cada 5 segundos
-
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [pixPaymentId, pixConfirmed]);
+  }, [pixExpiresAt, pixConfirmed]);
+
+  // Verifica status do PIX uma vez (manual ou polling)
+  const checkPixStatus = useCallback(async (): Promise<"CONFIRMED" | "PENDING" | "ERROR"> => {
+    if (!pixPaymentId) return "ERROR";
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return "ERROR";
+      const res = await fetch(`/api/pix/status?payment_id=${pixPaymentId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return "ERROR";
+      const data = await res.json();
+      return data.status === "CONFIRMED" ? "CONFIRMED" : "PENDING";
+    } catch (err) {
+      console.error("Erro ao verificar status PIX:", err);
+      return "ERROR";
+    }
+  }, [pixPaymentId]);
+
+  // Polling com backoff: 5s × 12 (1 min) → 10s × 12 (2 min) → 20s × 6 (2 min) → para
+  useEffect(() => {
+    if (!pixPaymentId || pixConfirmed || pixExpired) return;
+
+    let cancelled = false;
+    pollAttemptsRef.current = 0;
+
+    const schedule = (delayMs: number) => {
+      if (cancelled) return;
+      const timeout = setTimeout(async () => {
+        if (cancelled) return;
+        const result = await checkPixStatus();
+        if (cancelled) return;
+        if (result === "CONFIRMED") {
+          setPixConfirmed(true);
+          saveActivePix(null);
+          return;
+        }
+        pollAttemptsRef.current += 1;
+        const next = pollAttemptsRef.current;
+        // Backoff
+        let nextDelay: number;
+        if (next < 12) nextDelay = 5000;        // até 1 min
+        else if (next < 24) nextDelay = 10000;  // até 3 min
+        else if (next < 30) nextDelay = 20000;  // até 5 min
+        else return; // para após ~5 min; usuário pode usar "Já paguei"
+        schedule(nextDelay);
+      }, delayMs);
+      timeoutRefs.current.push(timeout);
+    };
+
+    const timeoutRefs = { current: [] as ReturnType<typeof setTimeout>[] };
+    schedule(5000);
+
+    return () => {
+      cancelled = true;
+      timeoutRefs.current.forEach(clearTimeout);
+    };
+  }, [pixPaymentId, pixConfirmed, pixExpired, checkPixStatus]);
+
+  const handleManualCheck = async () => {
+    setManualChecking(true);
+    const result = await checkPixStatus();
+    setManualChecking(false);
+    if (result === "CONFIRMED") {
+      setPixConfirmed(true);
+      saveActivePix(null);
+    } else if (result === "ERROR") {
+      setPixError("Não foi possível verificar agora. Tente novamente em alguns segundos.");
+    } else {
+      setPixError("Pagamento ainda não foi recebido. Aguarde o webhook do Asaas ou tente de novo.");
+    }
+  };
 
   const handleGeneratePix = useCallback(async () => {
     const amountCents = parseInt(pixAmount.replace(/\D/g, ""));
@@ -128,9 +251,19 @@ export default function UserDashboard() {
         throw new Error(data.error || "Erro ao gerar PIX");
       }
 
+      const expiresAt = Date.now() + (data.expires_in_minutes || 30) * 60 * 1000;
       setPixQrCode(data.qr_code);
       setPixCopyPaste(data.copy_paste);
       setPixPaymentId(data.payment_id);
+      setPixExpiresAt(expiresAt);
+      setPixExpired(false);
+      saveActivePix({
+        payment_id: data.payment_id,
+        qr_code: data.qr_code,
+        copy_paste: data.copy_paste,
+        amount_cents: amountCents,
+        expires_at: expiresAt,
+      });
     } catch (err: unknown) {
       setPixError(err instanceof Error ? err.message : "Erro ao gerar PIX");
     } finally {
@@ -161,10 +294,15 @@ export default function UserDashboard() {
     setPixQrCode("");
     setPixCopyPaste("");
     setPixPaymentId("");
+    setPixExpiresAt(null);
+    setPixExpired(false);
     setPixConfirmed(false);
     setPixError("");
     setPixLoading(false);
     setCopied(false);
+    setManualChecking(false);
+    pollAttemptsRef.current = 0;
+    saveActivePix(null);
   };
 
   const closePixModal = () => {
@@ -321,6 +459,20 @@ export default function UserDashboard() {
                   Voltar
                 </button>
               </div>
+            ) : pixExpired ? (
+              /* Estado: PIX expirou */
+              <div className="text-center space-y-4 py-2">
+                <div className="w-16 h-16 bg-warning/10 rounded-full flex items-center justify-center mx-auto">
+                  <AlertTriangle className="w-8 h-8 text-warning" />
+                </div>
+                <h3 className="text-lg font-bold text-[hsl(var(--text-primary))]">PIX expirado</h3>
+                <p className="text-sm text-[hsl(var(--text-secondary))]">
+                  Esse código de PIX passou da validade. Gere um novo para continuar.
+                </p>
+                <button onClick={resetPix} className="btn-primary w-full py-3">
+                  Gerar novo PIX
+                </button>
+              </div>
             ) : pixQrCode ? (
               /* Estado: QR Code gerado, aguardando pagamento */
               <div className="space-y-4">
@@ -360,12 +512,34 @@ export default function UserDashboard() {
                   {copied ? "Código copiado!" : "Copiar código PIX"}
                 </button>
 
-                {/* Timer */}
+                {/* Timer com countdown */}
                 <div className="flex items-center justify-center gap-2 text-xs text-[hsl(var(--text-muted))]">
                   <Clock className="w-3 h-3" />
-                  <span>Aguardando pagamento...</span>
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>
+                    Expira em{" "}
+                    <span className={`font-mono font-semibold ${pixRemainingMs < 60_000 ? "text-warning" : "text-[hsl(var(--text-secondary))]"}`}>
+                      {formatRemaining(pixRemainingMs)}
+                    </span>
+                  </span>
                 </div>
+
+                {/* Botão "Já paguei" */}
+                <button
+                  onClick={handleManualCheck}
+                  disabled={manualChecking}
+                  className="w-full py-2 rounded-xl text-xs font-medium border border-[hsl(var(--border))] text-[hsl(var(--text-secondary))] hover:border-primary/50 flex items-center justify-center gap-2 transition-all"
+                >
+                  {manualChecking ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  {manualChecking ? "Verificando..." : "Já paguei, verificar agora"}
+                </button>
+
+                {pixError && (
+                  <p className="text-xs text-warning bg-warning/10 p-2 rounded-lg text-center">{pixError}</p>
+                )}
               </div>
             ) : (
               /* Estado: Seleção de valor */

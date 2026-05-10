@@ -51,13 +51,23 @@ function GerenteDashboard() {
   if (!user || !userDoc) return null;
 
   if (!stallId) {
+    const isDevUser = userDoc.role === "desenvolvedor";
     return (
       <div className="max-w-xl mx-auto px-4 py-12 flex flex-col items-center justify-center text-center">
         <div className="w-16 h-16 rounded-full bg-warning/10 text-warning flex items-center justify-center mb-4">
           <AlertTriangle className="w-8 h-8" />
         </div>
         <h2 className="text-xl font-bold text-[hsl(var(--text-primary))] mb-2">Sem Barraca Atribuída</h2>
-        <p className="text-[hsl(var(--text-secondary))]">Peça ao Admin para te vincular a uma barraca.</p>
+        <p className="text-[hsl(var(--text-secondary))]">
+          {isDevUser
+            ? "Vincule sua conta de desenvolvedor a uma barraca para testar este painel."
+            : "Peça ao Admin para te vincular a uma barraca."}
+        </p>
+        {isDevUser && (
+          <Link href="/admin/usuarios" className="btn-primary mt-4 px-4 py-2 text-sm">
+            Ir para Gestão de Usuários
+          </Link>
+        )}
       </div>
     );
   }

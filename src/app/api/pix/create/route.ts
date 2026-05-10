@@ -37,20 +37,15 @@ async function verifyFirebaseToken(idToken: string) {
 }
 
 /**
- * Lê um documento do Firestore via REST API
+ * Escreve um documento no Firestore via REST API autenticando com o ID token do usuário.
+ * As regras do Firestore validam que o usuário só pode criar pix_payment com seu próprio user_id.
  */
-async function firestoreGet(collection: string, docId: string) {
-  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.fields;
-}
-
-/**
- * Escreve um documento no Firestore via REST API
- */
-async function firestoreSet(collection: string, docId: string, fields: Record<string, unknown>) {
+async function firestoreSet(
+  collection: string,
+  docId: string,
+  fields: Record<string, unknown>,
+  idToken: string,
+) {
   const firestoreFields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fields)) {
     if (typeof value === "string") {
@@ -67,9 +62,17 @@ async function firestoreSet(collection: string, docId: string, fields: Record<st
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}?documentId=${docId}`;
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${idToken}`,
+    },
     body: JSON.stringify({ fields: firestoreFields }),
   });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error(`firestoreSet falhou: ${res.status} - ${errBody}`);
+  }
 
   return res.ok;
 }
@@ -209,8 +212,8 @@ export async function POST(request: NextRequest) {
 
     const qrData = await qrRes.json();
 
-    // 6. Salvar pendência no Firestore (via REST API)
-    await firestoreSet("pix_payments", paymentData.id, {
+    // 6. Salvar pendência no Firestore (autenticado com o ID token do usuário)
+    const saved = await firestoreSet("pix_payments", paymentData.id, {
       user_id: userId,
       user_name: firebaseUser.name,
       user_email: firebaseUser.email,
@@ -219,7 +222,11 @@ export async function POST(request: NextRequest) {
       status: "PENDING",
       created_at: new Date(),
       expires_at: new Date(Date.now() + 30 * 60 * 1000),
-    });
+    }, token);
+
+    if (!saved) {
+      return NextResponse.json({ error: "Erro ao registrar pagamento. Tente novamente." }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,

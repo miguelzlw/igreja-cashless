@@ -13,7 +13,8 @@ export { generateQRCode } from "./qr/generateQRCode";
 export { processPayment } from "./payment/processPayment";
 export { rechargeBalance } from "./payment/rechargeBalance";
 export { processRefund } from "./payment/processRefund";
+export { creditPixPayment } from "./payment/creditPixPayment";
 
 // PIX
-export { createPixPayment } from "./pix/createPixPayment";
-export { handlePixWebhook } from "./pix/handlePixWebhook";
+// O fluxo PIX é tratado por API Routes do Next em src/app/api/pix/* (Asaas).
+// O webhook delega o crédito atômico do saldo para a Cloud Function creditPixPayment acima.
