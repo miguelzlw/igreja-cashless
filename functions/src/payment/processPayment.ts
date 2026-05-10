@@ -49,19 +49,13 @@ export const processPayment = onCall(
     const providedHmac = parsed.hmac;
     const isTempAccount = parsed.is_temp;
 
-    // 3. Validar itens
+    // 3. Validar itens (estrutura)
     const validatedItems = validateSaleItems(items);
     const stallId = validateUid(stall_id, "stall_id");
 
-    // 4. Calcular total
-    const totalCents = validatedItems.reduce(
-      (sum, item) => sum + item.unit_price_cents * item.quantity,
-      0
-    );
-
-    if (totalCents <= 0) {
-      throw Errors.INVALID_ARGUMENT("items", "total deve ser maior que zero");
-    }
+    // O total é calculado mais abaixo USANDO O PREÇO DO BANCO (não o do cliente).
+    // O unit_price_cents enviado pelo cliente é IGNORADO para evitar fraude
+    // (vendedor adulterando payload pra cobrar 1 centavo).
 
     // 5. Executar transação atômica
     const transactionId = await db.runTransaction(async (tx) => {
@@ -114,11 +108,6 @@ export const processPayment = onCall(
         throw Errors.INVALID_ARGUMENT("qr_payload", "QR Code inválido ou adulterado");
       }
 
-      // Verificar saldo
-      if (customerData.balance < totalCents) {
-        throw Errors.INSUFFICIENT_BALANCE(totalCents, customerData.balance);
-      }
-
       const now = admin.firestore.FieldValue.serverTimestamp();
 
       // PRIMEIRO: ler todos os produtos (transações Firestore exigem todas as
@@ -135,7 +124,21 @@ export const processPayment = onCall(
         })
       );
 
-      // DEPOIS: validar estoque e gravar todas as atualizações
+      // DEPOIS: validar produtos, calcular o total USANDO O PREÇO DO BANCO,
+      // e montar a lista canônica de itens (não confiamos no cliente para
+      // unit_price_cents — só pra product_id e quantity).
+      let totalCents = 0;
+      const canonicalItems: Array<{
+        product_id: string;
+        name: string;
+        quantity: number;
+        unit_price_cents: number;
+      }> = [];
+      const productUpdates: Array<{
+        ref: FirebaseFirestore.DocumentReference;
+        data: Record<string, unknown>;
+      }> = [];
+
       for (const { item, ref: productRef, snap: productSnap } of productReads) {
         if (!productSnap.exists) {
           throw Errors.NOT_FOUND(`Produto "${item.name}"`);
@@ -143,26 +146,58 @@ export const processPayment = onCall(
 
         const productData = productSnap.data()!;
 
+        // Preço VEM DO BANCO. unit_price_cents do cliente é descartado.
+        const serverPriceCents = productData.price_cents;
+        if (typeof serverPriceCents !== "number" || serverPriceCents <= 0) {
+          throw Errors.INVALID_ARGUMENT("items", `Produto "${productData.name || item.name}" sem preço válido`);
+        }
+
+        // Produto precisa estar ativo
+        if (productData.active === false) {
+          throw Errors.INVALID_ARGUMENT("items", `Produto "${productData.name || item.name}" está indisponível`);
+        }
+
+        const lineTotal = serverPriceCents * item.quantity;
+        totalCents += lineTotal;
+
+        canonicalItems.push({
+          product_id: item.product_id,
+          name: productData.name || item.name,
+          quantity: item.quantity,
+          unit_price_cents: serverPriceCents,
+        });
+
+        const baseUpdate: Record<string, unknown> = {
+          units_sold: admin.firestore.FieldValue.increment(item.quantity),
+          revenue_cents: admin.firestore.FieldValue.increment(lineTotal),
+          updated_at: now,
+        };
+
         if (productData.stock !== -1) {
           if (productData.stock < item.quantity) {
             throw Errors.INVALID_ARGUMENT(
               "items",
-              `"${item.name}" não tem estoque suficiente (disponível: ${productData.stock})`
+              `"${productData.name || item.name}" não tem estoque suficiente (disponível: ${productData.stock})`
             );
           }
-          tx.update(productRef, {
-            stock: admin.firestore.FieldValue.increment(-item.quantity),
-            units_sold: admin.firestore.FieldValue.increment(item.quantity),
-            revenue_cents: admin.firestore.FieldValue.increment(item.quantity * item.unit_price_cents),
-            updated_at: now,
-          });
-        } else {
-          tx.update(productRef, {
-            units_sold: admin.firestore.FieldValue.increment(item.quantity),
-            revenue_cents: admin.firestore.FieldValue.increment(item.quantity * item.unit_price_cents),
-            updated_at: now,
-          });
+          baseUpdate.stock = admin.firestore.FieldValue.increment(-item.quantity);
         }
+
+        productUpdates.push({ ref: productRef, data: baseUpdate });
+      }
+
+      if (totalCents <= 0) {
+        throw Errors.INVALID_ARGUMENT("items", "total deve ser maior que zero");
+      }
+
+      // Verificar saldo (agora que sabemos o total real)
+      if (customerData.balance < totalCents) {
+        throw Errors.INSUFFICIENT_BALANCE(totalCents, customerData.balance);
+      }
+
+      // Aplicar updates de produtos
+      for (const upd of productUpdates) {
+        tx.update(upd.ref, upd.data);
       }
 
       // Criar transação
@@ -177,7 +212,7 @@ export const processPayment = onCall(
         stall_name: stallData.name,
         operator_id: operatorId,
         operator_name: operatorData.name,
-        items: validatedItems,
+        items: canonicalItems, // itens com preço do banco (não do cliente)
         payment_method: "balance",
         status: "completed",
         created_at: now,
@@ -194,14 +229,14 @@ export const processPayment = onCall(
         total_sales_cents: admin.firestore.FieldValue.increment(totalCents),
       });
 
-      return txRef.id;
+      return { txId: txRef.id, totalCents };
     });
 
     return {
       success: true,
-      transaction_id: transactionId,
-      total_cents: totalCents,
-      message: `Venda de R$ ${(totalCents / 100).toFixed(2)} realizada com sucesso!`,
+      transaction_id: transactionId.txId,
+      total_cents: transactionId.totalCents,
+      message: `Venda de R$ ${(transactionId.totalCents / 100).toFixed(2)} realizada com sucesso!`,
     };
   }
 );

@@ -11,6 +11,41 @@ const MAX_PIX_CENTS = 50000;  // R$ 500,00
 // Cache simples para evitar criar o mesmo customer várias vezes
 const customerCache = new Map<string, string>();
 
+// ─── Rate limiter simples por usuário (em memória) ─────────────────────
+// Protege contra abuso/DoS na rota: usuário autenticado não pode disparar
+// mais de N criações de PIX em uma janela de tempo. Estado vive no processo
+// (perdido em cold start), o que é OK pra esse caso de uso — em ataques
+// distribuídos o Asaas rate-limita do lado dele.
+const RATE_LIMIT_MAX_REQUESTS = 5;        // 5 pedidos
+const RATE_LIMIT_WINDOW_MS = 60_000;       // por minuto
+const rateLimitBuckets = new Map<string, number[]>();
+
+function checkAndConsumeRateLimit(userId: string): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const cutoff = now - RATE_LIMIT_WINDOW_MS;
+  const bucket = (rateLimitBuckets.get(userId) || []).filter(t => t > cutoff);
+
+  if (bucket.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const oldest = bucket[0];
+    const retryAfterSec = Math.ceil((oldest + RATE_LIMIT_WINDOW_MS - now) / 1000);
+    return { allowed: false, retryAfterSec: Math.max(retryAfterSec, 1) };
+  }
+
+  bucket.push(now);
+  rateLimitBuckets.set(userId, bucket);
+
+  // Limpeza ocasional: se o map ficar muito grande, remove buckets vazios.
+  if (rateLimitBuckets.size > 1000) {
+    for (const [k, v] of rateLimitBuckets) {
+      const filtered = v.filter(t => t > cutoff);
+      if (filtered.length === 0) rateLimitBuckets.delete(k);
+      else rateLimitBuckets.set(k, filtered);
+    }
+  }
+
+  return { allowed: true, retryAfterSec: 0 };
+}
+
 /**
  * Verifica o Firebase ID Token via REST API (sem necessidade de Admin SDK)
  */
@@ -191,6 +226,15 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = firebaseUser.uid;
+
+    // 1a. Rate limit por usuário (5 PIX/min). Protege Asaas contra abuso.
+    const rl = checkAndConsumeRateLimit(userId);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: `Muitas tentativas. Aguarde ${rl.retryAfterSec}s e tente novamente.` },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+      );
+    }
 
     // 2. Validar dados da requisição
     const body = await request.json();
