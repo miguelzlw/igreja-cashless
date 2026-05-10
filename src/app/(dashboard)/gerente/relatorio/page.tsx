@@ -89,49 +89,43 @@ function RelatorioContent() {
             <p className="text-sm">Nenhum produto cadastrado para exibir no relatório.</p>
           </div>
         ) : (
-          <div className="glass-card overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-[hsl(var(--bg))]/50">
-                  <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase">Produto</th>
-                  <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Preço</th>
-                  <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Vendidos</th>
-                  <th className="py-3 px-4 text-xs font-semibold text-[hsl(var(--text-secondary))] uppercase text-right">Estoque</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[hsl(var(--border))]/30">
-                {products.map((p) => {
-                  const sold = (p as ProductDoc & { units_sold?: number }).units_sold ?? 0;
-                  return (
-                    <tr key={p.id} className="hover:bg-[hsl(var(--bg))]/30 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          {p.emoji && <span className="text-lg">{p.emoji}</span>}
-                          <span className="font-medium text-[hsl(var(--text-primary))] text-sm">{p.name}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-right font-medium text-primary text-sm">
-                        {formatCurrency(p.price_cents)}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <span className={`text-sm font-bold ${sold > 0 ? "text-emerald-500" : "text-[hsl(var(--text-muted))]"}`}>
-                          {sold}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {p.stock === -1 ? (
-                          <span className="text-xs font-semibold text-emerald-500">Ilimitado</span>
-                        ) : (
-                          <span className={`text-sm font-bold ${p.stock === 0 ? 'text-danger' : p.stock <= 5 ? 'text-warning' : 'text-[hsl(var(--text-primary))]'}`}>
-                            {p.stock}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="glass-card divide-y divide-[hsl(var(--border))]/30">
+            {products.map((p) => {
+              const sold = (p as ProductDoc & { units_sold?: number }).units_sold ?? 0;
+              const stockColor =
+                p.stock === 0 ? "text-danger" :
+                p.stock !== -1 && p.stock <= 5 ? "text-warning" :
+                "text-[hsl(var(--text-primary))]";
+              return (
+                <div key={p.id} className="p-3 hover:bg-[hsl(var(--bg))]/30 transition-colors">
+                  {/* Linha 1: nome + preço */}
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {p.emoji && <span className="text-lg shrink-0">{p.emoji}</span>}
+                      <span className="font-medium text-[hsl(var(--text-primary))] text-sm truncate">{p.name}</span>
+                    </div>
+                    <span className="text-sm font-bold text-primary shrink-0">{formatCurrency(p.price_cents)}</span>
+                  </div>
+                  {/* Linha 2: vendidos + estoque (sempre cabem lado a lado) */}
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[hsl(var(--text-muted))]">Vendidos:</span>
+                      <span className={`font-bold ${sold > 0 ? "text-emerald-500" : "text-[hsl(var(--text-muted))]"}`}>
+                        {sold}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[hsl(var(--text-muted))]">Estoque:</span>
+                      {p.stock === -1 ? (
+                        <span className="font-semibold text-emerald-500">Ilimitado</span>
+                      ) : (
+                        <span className={`font-bold ${stockColor}`}>{p.stock}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

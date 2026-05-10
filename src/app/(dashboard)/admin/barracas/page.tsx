@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import {
   collection, onSnapshot, addDoc, serverTimestamp,
-  query, orderBy, doc, updateDoc
+  query, orderBy, doc, updateDoc, deleteDoc, getDocs, writeBatch
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { formatCurrency } from "@/lib/utils/formatters";
-import { Store, Plus, Loader2, X, CheckCircle2, ArrowLeft, Edit2 } from "lucide-react";
+import { Store, Plus, Loader2, X, CheckCircle2, ArrowLeft, Edit2, Trash2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import AuthGuard from "@/components/auth/AuthGuard";
 
@@ -39,6 +39,11 @@ function BarracasContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [errorStr, setErrorStr] = useState("");
   const [successStr, setSuccessStr] = useState("");
+
+  // Modal Excluir
+  const [deletingStall, setDeletingStall] = useState<LocalStall | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return;
@@ -104,6 +109,33 @@ function BarracasContent() {
     }
   };
 
+  const handleDeleteStall = async () => {
+    if (!deletingStall) return;
+    if (deletingStall.total_sales_cents > 0) {
+      setDeleteError("Esta barraca já tem vendas registradas e não pode ser excluída.");
+      return;
+    }
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      // Apaga produtos da barraca em lote (subcoleção stalls/{id}/products)
+      const productsSnap = await getDocs(collection(db, "stalls", deletingStall.id, "products"));
+      if (!productsSnap.empty) {
+        const batch = writeBatch(db);
+        productsSnap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      // Apaga o documento da barraca
+      await deleteDoc(doc(db, "stalls", deletingStall.id));
+      setDeletingStall(null);
+    } catch (err) {
+      console.error(err);
+      setDeleteError("Erro ao excluir barraca. Verifique se você tem permissão.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return null;
 
   return (
@@ -150,10 +182,23 @@ function BarracasContent() {
                     <p className="text-xs text-[hsl(var(--text-muted))] font-mono mt-0.5">ID: {stall.id.substring(0, 8)}...</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <p className="font-bold text-emerald-500 text-lg">{formatCurrency(stall.total_sales_cents)}</p>
-                  <button onClick={() => openEditStall(stall)} className="p-2 rounded-lg hover:bg-[hsl(var(--bg))] text-[hsl(var(--text-secondary))]">
+                  <button
+                    onClick={() => openEditStall(stall)}
+                    className="p-2 rounded-lg hover:bg-[hsl(var(--bg))] text-[hsl(var(--text-secondary))] hover:text-primary transition-colors"
+                    aria-label="Editar barraca"
+                  >
                     <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => { setDeletingStall(stall); setDeleteError(""); }}
+                    disabled={stall.total_sales_cents > 0}
+                    title={stall.total_sales_cents > 0 ? "Não pode excluir: barraca já tem vendas" : "Excluir barraca"}
+                    className="p-2 rounded-lg hover:bg-danger/10 text-[hsl(var(--text-secondary))] hover:text-danger transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[hsl(var(--text-secondary))]"
+                    aria-label="Excluir barraca"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -199,6 +244,54 @@ function BarracasContent() {
                 {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : "Salvar"}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmação de Exclusão */}
+      {deletingStall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !isDeleting && setDeletingStall(null)}
+          />
+          <div className="relative w-full max-w-sm glass-card border flex flex-col p-6 animate-slide-up shadow-2xl rounded-2xl">
+            <div className="w-14 h-14 rounded-full bg-danger/10 mx-auto flex items-center justify-center mb-4">
+              <AlertTriangle className="w-7 h-7 text-danger" />
+            </div>
+
+            <h3 className="text-xl font-bold text-[hsl(var(--text-primary))] text-center mb-2">
+              Excluir barraca?
+            </h3>
+            <p className="text-sm text-[hsl(var(--text-secondary))] text-center mb-4">
+              Você está prestes a excluir <strong>{deletingStall.name}</strong>. Essa ação <strong>não pode ser desfeita</strong>.
+            </p>
+            <div className="bg-warning/10 border border-warning/20 rounded-lg p-3 text-xs text-warning text-left mb-4 space-y-1">
+              <p>• Todos os <strong>produtos</strong> dessa barraca serão apagados.</p>
+              <p>• Vendedores vinculados continuarão existindo, mas perderão a barraca.</p>
+              <p>• Histórico de vendas (transações) será mantido para auditoria.</p>
+            </div>
+
+            {deleteError && (
+              <p className="p-3 mb-3 bg-danger/10 text-danger text-sm rounded-lg">{deleteError}</p>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setDeletingStall(null)}
+                disabled={isDeleting}
+                className="py-3 rounded-xl border border-[hsl(var(--border))] text-[hsl(var(--text-secondary))] font-medium hover:bg-[hsl(var(--bg))] transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteStall}
+                disabled={isDeleting}
+                className="py-3 rounded-xl bg-danger text-white font-bold hover:bg-danger/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : (<><Trash2 className="w-4 h-4" /> Excluir</>)}
+              </button>
+            </div>
           </div>
         </div>
       )}

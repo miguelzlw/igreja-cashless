@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase/config";
+import { consumeGoogleRedirect } from "@/lib/firebase/auth";
 import { subscribeToDocument } from "@/lib/firebase/firestore";
 import { useDevImpersonation } from "@/lib/hooks/useDevImpersonation";
 import type { AuthState, AuthUser, UserDoc, UserRole } from "@/lib/types";
@@ -55,6 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       return;
     }
+
+    // Tentar consumir redirect do Google (mobile signInWithRedirect).
+    // Não bloqueia: o onAuthStateChanged abaixo é quem dispara as atualizações.
+    consumeGoogleRedirect().catch(() => {
+      // erros (ex.: nenhum redirect pendente) são silenciados — é o caminho normal
+    });
 
     let unsubscribeDoc: (() => void) | null = null;
 
