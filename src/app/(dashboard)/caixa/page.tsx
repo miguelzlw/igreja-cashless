@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { db, functions } from "@/lib/firebase/config";
 import {
-  doc, getDoc, getDocs, collection, serverTimestamp, writeBatch
+  doc, getDoc, collection, serverTimestamp, writeBatch, runTransaction
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import type { UserDoc } from "@/lib/types";
@@ -127,21 +127,26 @@ export default function CaixaDashboard() {
 
     setGeneratingFichas(true);
     try {
-      // Buscar todos os códigos existentes para não repetir
-      const existingSnap = await getDocs(collection(db, "temp_accounts"));
-      const existingCodes = new Set(existingSnap.docs.map(d => d.data().code));
+      // Reservar uma faixa contígua de códigos via transação atômica no contador.
+      // Isso garante que dois caixas gerando lotes ao mesmo tempo recebam faixas
+      // disjuntas — sem possibilidade de duplicata.
+      const counterRef = doc(db, "counters", "temp_account_code");
+      const startCode = await runTransaction(db, async (tx) => {
+        const snap = await tx.get(counterRef);
+        const current = snap.exists() ? (snap.data().next as number) : 1;
+        tx.set(counterRef, { next: current + qty }, { merge: true });
+        return current;
+      });
 
+      // Pré-aloca os refs e códigos da faixa reservada
       const batch = writeBatch(db);
       const fichaIds: Array<{ id: string; code: string }> = [];
 
       for (let i = 0; i < qty; i++) {
         const ref = doc(collection(db, "temp_accounts"));
-        
-        let code;
-        do {
-          code = String(Math.floor(Math.random() * 9000) + 1000); // 4 dígitos
-        } while (existingCodes.has(code));
-        existingCodes.add(code); // Evita duplicata neste mesmo lote
+        const num = startCode + i;
+        // 4 dígitos até 9999, depois expande automaticamente (5+ dígitos)
+        const code = num <= 9999 ? String(num).padStart(4, "0") : String(num);
 
         batch.set(ref, {
           code,

@@ -90,12 +90,27 @@ service cloud.firestore {
       allow delete: if hasRole('admin') || isDev();
     }
 
+    // ── Contadores (sequenciais atômicos) ──────────────────
+    // Apenas operadores autorizados a criar fichas físicas (caixa/admin/dev) podem
+    // ler e incrementar. Usado em transações Firestore para reservar faixas
+    // contíguas de códigos sem race condition.
+    match /counters/{counterId} {
+      allow read, write: if hasAnyRole(['caixa', 'admin', 'desenvolvedor']);
+    }
+
     // ── Pagamentos PIX ────────────────────────────────────
     // Criação e confirmação acontecem via API Routes (Admin SDK).
     // Clientes só podem ler SEUS PRÓPRIOS pagamentos.
     match /pix_payments/{paymentId} {
-      allow read: if isAuth() && resource.data.user_id == uid();
-      allow create, update, delete: if false; // Somente Admin SDK
+      allow read: if isAuth() && (resource.data.user_id == uid() || hasRole('admin') || isDev());
+      // Usuário pode criar seu próprio pix_payment com status inicial PENDING
+      // (rota /api/pix/create grava com o ID token do usuário).
+      allow create: if isAuth() &&
+                       request.resource.data.user_id == uid() &&
+                       request.resource.data.status == "PENDING" &&
+                       request.resource.data.amount_cents is int;
+      // Update e delete só via Admin SDK (Cloud Function creditPixPayment).
+      allow update, delete: if false;
     }
 
     // ── Bloqueio padrão ─────────────────────────────────────

@@ -52,7 +52,7 @@ export const rechargeBalance = onCall(
       }
 
       const operatorData = operatorSnap.data()!;
-      if (!["caixa", "admin"].includes(operatorData.role)) {
+      if (!["caixa", "admin", "desenvolvedor"].includes(operatorData.role)) {
         throw Errors.PERMISSION_DENIED("realizar recargas");
       }
 

@@ -46,9 +46,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "payment_id é obrigatório" }, { status: 400 });
     }
 
-    // 3. Buscar no Firestore via REST API
+    // 3. Buscar no Firestore via REST API (autenticado com o ID token do usuário)
     const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/pix_payments/${paymentId}`;
-    const firestoreRes = await fetch(url);
+    const firestoreRes = await fetch(url, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
 
     if (!firestoreRes.ok) {
       return NextResponse.json({ error: "Pagamento não encontrado" }, { status: 404 });

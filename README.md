@@ -1,76 +1,190 @@
 # ⛪ Sistema Cashless para Eventos (Igreja)
 
-![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js)
+![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)
 ![Firebase](https://img.shields.io/badge/Firebase-PaaS-orange?style=for-the-badge&logo=firebase)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind-CSS-blue?style=for-the-badge&logo=tailwind-css)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Linguagem-blue?style=for-the-badge&logo=typescript)
 
-Um sistema completo e profissional de gestão de vendas e recargas focado em grandes eventos sociais e paroquiais. Projetado para substituir o papel por uma solução digital segura, rápida e intuitiva.
+Sistema completo de vendas e recargas para grandes eventos paroquiais. Substitui o papel por uma solução digital com QR Code, PIX e fichas físicas para quem não tem smartphone.
 
 ---
 
-## 🚀 Funcionalidades Principais
+## 🚀 Funcionalidades
 
-### 💳 Sistema de Pagamento & Saldo
-- **Recarga em Tempo Real**: Participants podem carregar saldo via PIX ou dinheiro diretamente nos caixas.
-- **Transações Atômicas**: Segurança total no processamento financeiro com `Firebase runTransaction`, evitando perdas ou duplicidade.
-- **Histórico Transparente**: Usuário acompanha cada gasto e recarga instantaneamente.
-
-### 🏠 Modos de Operação
-- **Vendedor (PDV)**: Interface otimizada com grade de produtos, carrinho dinâmico e escaneamento de QR Code para cobrança veloz.
-- **Caixa de Recarga**: Ferramenta rápida para buscar usuários e injetar créditos.
-- **Gerente de Barraca**: Dashboard de faturamento em tempo real, gestão de estoque e controle de equipe.
-- **Admin Geral**: Controle macro da festa, criação de barracas e atribuição de cargos.
-
-### 🎫 Fichas Físicas (Inclusão Digital)
-- Geração de **Contas Temporárias** com QR Code para quem não possui smartphone ou prefere o método tradicional.
-- Layout de impressão otimizado (6 fichas por folha A4) autogerado pelo sistema.
+- **PIX em tempo real** (integração Asaas) — usuário gera, paga, saldo é creditado automaticamente via webhook + Cloud Function atômica.
+- **Recarga em dinheiro pelo Caixa** — operador escaneia QR do cliente e injeta o valor.
+- **Fichas físicas com QR** — códigos sequenciais (sem duplicatas) impressos 6 por folha A4 para quem não tem celular.
+- **PDV do Vendedor** — grid de produtos, carrinho, scan do QR do cliente, débito atômico.
+- **Painel do Gerente** — cardápio, equipe, relatório de vendas da barraca.
+- **Admin Geral** — barracas, usuários, cargos, relatório consolidado.
+- **Modo Desenvolvedor** — uma única conta acessa todos os 5 painéis para testes (`/dev`).
+- **Transações 100% atômicas** via `runTransaction` do Firestore — zero possibilidade de double-spend ou crédito duplicado.
 
 ---
 
-## 🎨 Design System
-O projeto utiliza uma estética **Glassmorphism** premium, focada em:
-- **Responsividade Total**: Experiência fluida em qualquer smartphone.
-- **Micro-animações**: Feedback visual constante (Framer Motion).
-- **Dark/Light Mode**: Adaptável à preferência do usuário ou luz ambiente do evento.
+## 🛠️ Stack
+
+- **Front:** Next.js 16 (App Router) + React 19 + TailwindCSS
+- **Auth & DB:** Firebase Auth + Firestore (regras granulares por role)
+- **Backend pesado:** Cloud Functions (Node 20, região `southamerica-east1`)
+- **PIX:** Asaas (sandbox e produção)
+- **Testes:** Vitest + Testing Library
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## 🔧 Setup do Zero
 
-- **Front-end**: React 19 + Next.js 15 (App Router).
-- **Estilização**: Tailwind CSS para um design sob medida.
-- **Backend / Infra**: 
-  - **Firestore**: Banco de dados NoSQL em tempo real.
-  - **Cloud Auth**: Autenticação segura via Google/E-mail.
-  - **Security Rules**: Proteção granular de dados baseada em Roles.
-- **Ferramentas**: Lucide React (Ícones), Local QR Generation, PWA/Service Workers.
+### 1. Pré-requisitos
+
+- **Node.js 20+** e **npm**
+- **Firebase CLI** (`npm i -g firebase-tools`)
+- Conta no [Firebase](https://firebase.google.com)
+- Conta no [Asaas](https://www.asaas.com) (use a sandbox em desenvolvimento)
+
+### 2. Clonar e instalar
+
+```bash
+git clone https://github.com/miguelzlw/igreja-cashless.git
+cd igreja-cashless
+npm install
+cd functions && npm install && cd ..
+```
+
+### 3. Criar projeto Firebase
+
+1. Acesse [console.firebase.google.com](https://console.firebase.google.com), clique em **Adicionar projeto**.
+2. **Authentication** → habilite **E-mail/senha** e **Google**.
+3. **Firestore Database** → criar banco no modo **produção**, região `southamerica-east1`.
+4. **Cloud Functions** → habilite (precisa do plano Blaze, mesmo que vá usar dentro do free tier).
+5. **Configurações do projeto → Geral**: copie o objeto `firebaseConfig`.
+
+Depois, no terminal:
+
+```bash
+firebase login
+firebase use --add   # selecione o projeto que você criou
+```
+
+### 4. Configurar `.env.local`
+
+Copie o exemplo e preencha:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Variáveis necessárias (todas estão comentadas no `.env.local.example`):
+
+| Variável | De onde vem |
+|---|---|
+| `NEXT_PUBLIC_FIREBASE_*` | Firebase Console → Configurações → Geral |
+| `ASAAS_API_KEY` | Asaas → Integrações → API |
+| `ASAAS_WEBHOOK_TOKEN` | Você define (string aleatória ≥32 chars) |
+| `INTERNAL_WEBHOOK_SECRET` | Você define (string aleatória ≥32 chars) |
+| `CREDIT_PIX_URL` | Firebase mostra após `firebase deploy --only functions:creditPixPayment` |
+
+### 5. Configurar segredos das Cloud Functions
+
+```bash
+# Segredo do HMAC do QR (use uma string aleatória forte, ex.: openssl rand -hex 32)
+firebase functions:secrets:set HMAC_SECRET
+
+# Segredo compartilhado entre webhook (Next) e Cloud Function de crédito
+# IMPORTANTE: usar o MESMO valor que está no .env.local
+firebase functions:secrets:set INTERNAL_WEBHOOK_SECRET
+```
+
+### 6. Deploy de regras, índices e Cloud Functions
+
+```bash
+firebase deploy --only firestore:rules
+firebase deploy --only firestore:indexes
+firebase deploy --only functions
+```
+
+Anote a URL da função `creditPixPayment` que aparece no log e cole no `.env.local` em `CREDIT_PIX_URL`.
+
+### 7. Configurar webhook no painel do Asaas
+
+1. Asaas Dashboard → **Integrações → Webhooks** → **Adicionar webhook**.
+2. URL: `https://SEU_DOMINIO/api/pix/webhook`.
+3. Header **`asaas-access-token`** = o valor de `ASAAS_WEBHOOK_TOKEN`.
+4. Eventos: **PAYMENT_RECEIVED** (mínimo).
+5. Sandbox primeiro, produção depois.
+
+### 8. Subir o app
+
+```bash
+npm run dev
+```
+
+Abre em `http://localhost:3000`.
+
+### 9. Criar conta admin inicial
+
+1. Cadastre-se normalmente em `/register` (você vira `user`).
+2. Altere a role manualmente no Firestore Console: `users/{seu-uid}.role = "admin"`.
+3. Faça logout/login para o app puxar a nova role.
+4. A partir daí, você troca cargos pela UI em `/admin/usuarios`.
+
+> Dica: para testar tudo, troque sua própria role para `desenvolvedor` em `/admin/usuarios`. Você ganha um Hub Dev em `/dev` com botões para entrar em qualquer painel.
 
 ---
 
-## 🔧 Como Iniciar
+## 🧪 Testes
 
-1. Clone o repositório:
-   ```bash
-   git clone https://github.com/miguelzlw/igreja-cashless.git
-   ```
-2. Instale as dependências:
-   ```bash
-   npm install
-   ```
-3. Configure o `.env.local`:
-   Crie o arquivo baseado no `.env.local.example` com suas chaves do Firebase.
-4. Execute o servidor de desenvolvimento:
-   ```bash
-   npm run dev
-   ```
+```bash
+npm test          # roda uma vez
+npm run test:watch # modo watch
+```
+
+Cobertura atual:
+- ✅ Helpers de formatação (`formatters.ts`)
+- ✅ Contexto de impersonation do dev
+- ⏳ **TODO** — testes de integração das Cloud Functions críticas (rechargeBalance, processPayment, processRefund, creditPixPayment) usando Firestore emulator.
+- ⏳ **TODO** — teste de race condition do contador de fichas com 5 caixas simultâneos.
 
 ---
 
-## 👨‍💻 Desenvolvedor
-**Miguel ZLW** - *Foco em soluções inovadoras e seguras.*
+## 📦 Deploy em Produção
+
+1. Crie um projeto Firebase separado para produção (ex.: `festa-saojoao-prod`).
+2. Repita os passos 4–7 acima nesse projeto.
+3. Use a **API key de PRODUÇÃO** do Asaas (não a sandbox).
+4. Hospede o Next.js (Vercel é o caminho mais fácil) configurando todas as `NEXT_*`, `ASAAS_*`, `INTERNAL_WEBHOOK_SECRET` e `CREDIT_PIX_URL` como env vars do projeto.
+5. **Antes do evento**: faça um teste end-to-end com um valor real pequeno (R$ 5) para confirmar que o webhook credita o saldo.
 
 ---
 
-> [!NOTE]
-> Este é um projeto de alta complexidade técnica que demonstra habilidades em arquitetura de software, segurança de dados e experiência do usuário (UX).
+## 🐛 Troubleshooting
+
+| Erro | Causa provável | Fix |
+|---|---|---|
+| `auth/configuration-not-found` | `.env.local` faltando ou errado | Verifique todos os `NEXT_PUBLIC_FIREBASE_*` |
+| Webhook recebe 401 | `ASAAS_WEBHOOK_TOKEN` diferente do que tá no painel do Asaas | Igualar os dois |
+| Webhook recebe 500 com "deferred" | `INTERNAL_WEBHOOK_SECRET` ou `CREDIT_PIX_URL` errado/faltando | Conferir env vars + secret na Cloud Function |
+| `permission-denied` ao salvar venda | Vendedor sem `stall_id` | Vincular barraca em `/admin/usuarios` |
+| Build local quebra em `functions/src/...` | Esqueceu `cd functions && npm install` | Instalar deps das Functions |
+
+---
+
+## 🗂️ Estrutura
+
+```
+src/app/(dashboard)/      Painéis por role (admin, caixa, gerente, vendedor, user, dev)
+src/app/api/pix/          Rotas PIX (create, status, webhook → delegam para CF)
+src/components/           UI compartilhada
+src/lib/firebase/         Config + helpers do client SDK
+src/lib/hooks/            useAuth, useDevImpersonation
+firestore.rules           Regras de acesso por role
+functions/src/            Cloud Functions (admin SDK)
+  payment/                processPayment, rechargeBalance, processRefund, creditPixPayment
+  auth/                   onUserCreate (cria userDoc)
+  qr/                     generateQRCode
+```
+
+---
+
+## 👨‍💻 Autor
+
+**Miguel ZLW** · Sistema construído para a Festa de São João.

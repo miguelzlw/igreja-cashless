@@ -17,6 +17,7 @@ import {
 import QRScanner from "@/components/shared/QRScanner";
 import { playSuccessSound, playErrorSound } from "@/lib/utils/sounds";
 import { vibrateSuccess, vibrateError, vibrateLight } from "@/lib/utils/vibration";
+import Link from "next/link";
 
 export default function VendedorDashboard() {
   const { user, userDoc } = useAuth();
@@ -244,6 +245,7 @@ export default function VendedorDashboard() {
 
   // Sem barraca atribuída
   if (!userDoc.stall_id) {
+    const isDevUser = userDoc.role === "desenvolvedor";
     return (
       <div className="max-w-md mx-auto px-4 py-12 flex flex-col items-center justify-center text-center">
         <div className="w-20 h-20 bg-warning/10 rounded-full flex items-center justify-center mb-4">
@@ -251,8 +253,15 @@ export default function VendedorDashboard() {
         </div>
         <h2 className="text-xl font-bold text-[hsl(var(--text-primary))] mb-2">Sem Barraca Atribuída</h2>
         <p className="text-[hsl(var(--text-secondary))] text-sm">
-          Peça ao Gerente ou Admin para te vincular a uma barraca antes de começar a vender.
+          {isDevUser
+            ? "Vincule sua conta de desenvolvedor a uma barraca para testar este painel."
+            : "Peça ao Gerente ou Admin para te vincular a uma barraca antes de começar a vender."}
         </p>
+        {isDevUser && (
+          <Link href="/admin/usuarios" className="btn-primary mt-4 px-4 py-2 text-sm">
+            Ir para Gestão de Usuários
+          </Link>
+        )}
       </div>
     );
   }
