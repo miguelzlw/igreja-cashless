@@ -2,7 +2,7 @@ import { onCall } from "firebase-functions/v2/https";
 import { db, REGION } from "../utils/admin";
 import { Errors } from "../utils/errors";
 import { validateUid, validateSaleItems } from "../utils/validation";
-import { parseAndVerifyQR } from "../utils/hmac";
+import { parseQRPayload, safeEqual } from "../utils/hmac";
 import { checkRateLimit } from "../security/rateLimiter";
 import * as admin from "firebase-admin";
 
@@ -35,18 +35,19 @@ export const processPayment = onCall(
       stall_id: string;
     };
 
-    // 2. Validar e verificar QR Code
+    // 2. Parsear QR (a verificação acontece dentro da transação contra o qr_hmac armazenado)
     if (!qr_payload || typeof qr_payload !== "string") {
       throw Errors.INVALID_ARGUMENT("qr_payload", "QR Code inválido");
     }
 
-    const parseResult = parseAndVerifyQR(qr_payload);
-    if (!parseResult) {
-      throw Errors.INVALID_ARGUMENT("qr_payload", "QR Code inválido ou adulterado");
+    const parsed = parseQRPayload(qr_payload);
+    if (!parsed) {
+      throw Errors.INVALID_ARGUMENT("qr_payload", "QR Code inválido");
     }
 
-    const customerId = parseResult.uid;
-    const isTempAccount = parseResult.is_temp;
+    const customerId = parsed.uid;
+    const providedHmac = parsed.hmac;
+    const isTempAccount = parsed.is_temp;
 
     // 3. Validar itens
     const validatedItems = validateSaleItems(items);
@@ -105,6 +106,13 @@ export const processPayment = onCall(
       }
 
       const customerData = customerSnap.data()!;
+
+      // Verificar autenticidade do QR contra o hmac armazenado no documento.
+      // Para fichas físicas, o "hmac" é literalmente "temp_<uid>" (sem segredo).
+      const storedHmac = isTempAccount ? `temp_${customerId}` : (customerData.qr_hmac || "");
+      if (!storedHmac || !safeEqual(providedHmac, storedHmac)) {
+        throw Errors.INVALID_ARGUMENT("qr_payload", "QR Code inválido ou adulterado");
+      }
 
       // Verificar saldo
       if (customerData.balance < totalCents) {
