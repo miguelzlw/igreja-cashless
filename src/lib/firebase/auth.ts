@@ -76,18 +76,48 @@ function isMobile(): boolean {
   return /Android|iPhone|iPad|iPod|Mobile|webOS|Opera Mini/i.test(navigator.userAgent);
 }
 
+/**
+ * Erros que indicam que o popup não conseguiu abrir/funcionar e devemos
+ * cair pra `signInWithRedirect` (que sempre funciona, mas navega a página).
+ *
+ * - popup-blocked: navegador bloqueou (ex.: Chrome desktop sem user-gesture suficiente)
+ * - popup-closed-by-user: usuário fechou (ou o navegador fechou silenciosamente)
+ * - cancelled-popup-request: outra tentativa foi disparada (geralmente sintoma de problema)
+ * - operation-not-supported-in-this-environment: webview/PWA sem suporte a popup
+ * - missing-or-invalid-nonce: alguns navegadores em modo privado
+ */
+const POPUP_FAILURE_CODES = new Set([
+  "auth/popup-blocked",
+  "auth/popup-closed-by-user",
+  "auth/cancelled-popup-request",
+  "auth/operation-not-supported-in-this-environment",
+  "auth/missing-or-invalid-nonce",
+  "auth/web-storage-unsupported",
+]);
+
 export async function signInWithGoogle(): Promise<User | null> {
   if (isMobile()) {
-    // Redirect: o navegador sai do app, faz login no Google e volta.
-    // O resultado é capturado em `consumeGoogleRedirect()` que precisa ser
-    // chamado no carregamento das páginas de login/registro.
+    // Mobile: vai direto pro redirect (popup é instável em iOS Safari, Android
+    // Chrome em PWA, e bloqueado em alguns webviews).
     await signInWithRedirect(auth, googleProvider);
     return null; // a página será recarregada pelo provedor
   }
-  // Desktop: popup tradicional
-  const result = await signInWithPopup(auth, googleProvider);
-  await ensureUserDocument(result.user);
-  return result.user;
+  // Desktop: tenta popup primeiro
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    await ensureUserDocument(result.user);
+    return result.user;
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || "";
+    if (POPUP_FAILURE_CODES.has(code)) {
+      // Popup falhou (bloqueado, fechado, ou ambiente sem suporte) — cai pra redirect
+      console.warn(`[signInWithGoogle] popup falhou com ${code}, usando redirect`);
+      await signInWithRedirect(auth, googleProvider);
+      return null;
+    }
+    // Outros erros (rede, conta desativada, etc.) sobem pra UI mostrar
+    throw err;
+  }
 }
 
 /**
