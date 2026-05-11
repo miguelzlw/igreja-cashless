@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { collection, onSnapshot, query, getDocs, orderBy, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
@@ -246,7 +246,7 @@ function AdminRelatorioContent() {
         )}
       </section>
 
-      {/* Barracas movidas para CIMA — destaque visual prioritário */}
+      {/* Barracas em grid 2x2 com painel inline na fileira (mesma UX do cardápio do user). */}
       <section className="space-y-4">
         <h3 className="font-semibold text-[hsl(var(--text-primary))] flex items-center gap-2">
           <Store className="w-4 h-4 text-primary" /> Desempenho das Barracas
@@ -261,70 +261,161 @@ function AdminRelatorioContent() {
             <p>Nenhuma barraca registrada.</p>
           </div>
         ) : (
-          stalls.map(stall => (
-            <div key={stall.id} className="glass-card overflow-hidden">
-              <button
-                onClick={() => setExpandedStall(expandedStall === stall.id ? null : stall.id)}
-                className="w-full p-4 flex items-center justify-between hover:bg-[hsl(var(--card))]/60 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${stall.is_active ? "bg-emerald-500" : "bg-danger"}`} />
-                  <div className="text-left">
-                    <p className="font-bold text-[hsl(var(--text-primary))]">{stall.name}</p>
-                    <p className="text-xs text-[hsl(var(--text-secondary))] mt-0.5">
-                      {stall.products.length} produtos cadastrados
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <p className="font-bold text-emerald-500">{formatCurrency(stall.total_sales_cents)}</p>
-                  {expandedStall === stall.id
-                    ? <ChevronUp className="w-5 h-5 text-[hsl(var(--text-muted))]" />
-                    : <ChevronDown className="w-5 h-5 text-[hsl(var(--text-muted))]" />
-                  }
-                </div>
-              </button>
+          <div className="space-y-3">
+            {(() => {
+              // Divide as barracas em fileiras de 2 e renderiza o painel
+              // logo abaixo da fileira que contém a barraca selecionada.
+              const rows: typeof stalls[] = [];
+              for (let i = 0; i < stalls.length; i += 2) {
+                rows.push(stalls.slice(i, i + 2));
+              }
 
-              {expandedStall === stall.id && (
-                <div className="px-4 pb-4 border-t border-[hsl(var(--border))]/50">
-                  <table className="w-full text-left mt-2">
-                    <thead>
-                      <tr className="border-b border-[hsl(var(--border))]/30">
-                        <th className="py-2 text-xs font-semibold text-[hsl(var(--text-secondary))]">Produto</th>
-                        <th className="py-2 text-xs font-semibold text-[hsl(var(--text-secondary))] text-center">Unid. Vendidas</th>
-                        <th className="py-2 text-xs font-semibold text-[hsl(var(--text-secondary))] text-right">Faturamento</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[hsl(var(--border))]/20">
-                      {stall.products.map(p => (
-                        <tr key={p.id} className="hover:bg-[hsl(var(--bg))]/30 transition-colors">
-                          <td className="py-3 pr-2">
-                            <div className="flex items-center gap-2">
-                              {p.emoji && <span>{p.emoji}</span>}
-                              <span className="font-medium text-sm text-[hsl(var(--text-primary))]">{p.name}</span>
+              return rows.map((row, rowIdx) => {
+                const expandedInRow = row.find(s => s.id === expandedStall);
+                return (
+                  <Fragment key={rowIdx}>
+                    {/* Fileira de até 2 barracas */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {row.map(stall => {
+                        const isSelected = expandedStall === stall.id;
+                        return (
+                          <button
+                            key={stall.id}
+                            onClick={() => setExpandedStall(isSelected ? null : stall.id)}
+                            className={`relative glass-card p-4 flex flex-col items-center text-center gap-1.5 transition-all duration-200 rounded-2xl border ${
+                              isSelected
+                                ? "border-primary/50 bg-primary/5 shadow-lg shadow-primary/10"
+                                : "border-transparent hover:border-primary/20 hover:bg-[hsl(var(--card))]/60"
+                            }`}
+                          >
+                            {/* Status dot + ícone */}
+                            <div className="relative">
+                              <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                                isSelected ? "bg-primary/20" : "bg-primary/10"
+                              }`}>
+                                <Store className={`w-6 h-6 transition-colors ${isSelected ? "text-primary" : "text-primary/70"}`} />
+                              </div>
+                              <div
+                                className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[hsl(var(--card))] ${stall.is_active ? "bg-emerald-500" : "bg-danger"}`}
+                                title={stall.is_active ? "Ativa" : "Inativa"}
+                              />
                             </div>
-                          </td>
-                          <td className="py-3 text-center text-sm font-medium text-[hsl(var(--text-secondary))]">
-                            {p.units_sold || 0}
-                          </td>
-                          <td className="py-3 text-right text-sm font-bold text-primary">
-                            {formatCurrency(p.revenue_cents || 0)}
-                          </td>
-                        </tr>
-                      ))}
-                      {stall.products.length === 0 && (
-                        <tr>
-                          <td colSpan={3} className="py-4 text-center text-sm text-[hsl(var(--text-muted))]">
+
+                            {/* Nome */}
+                            <p className={`font-bold text-sm leading-tight transition-colors ${
+                              isSelected ? "text-primary" : "text-[hsl(var(--text-primary))]"
+                            }`}>
+                              {stall.name}
+                            </p>
+
+                            {/* Faturamento — destaque principal num relatório */}
+                            <p className="font-black text-emerald-500 text-base">
+                              {formatCurrency(stall.total_sales_cents)}
+                            </p>
+
+                            {/* Quantidade de produtos */}
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                              isSelected
+                                ? "bg-primary/15 text-primary"
+                                : "bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]"
+                            }`}>
+                              {stall.products.length} {stall.products.length !== 1 ? "produtos" : "produto"}
+                            </span>
+
+                            {/* Chevron */}
+                            <div className={`absolute bottom-2 right-2 transition-transform duration-200 ${isSelected ? "rotate-180" : ""}`}>
+                              <ChevronDown className={`w-4 h-4 ${isSelected ? "text-primary" : "text-[hsl(var(--text-muted))]"}`} />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Painel inline com produtos (units_sold + revenue_cents) */}
+                    {expandedInRow && (
+                      <div className="glass-card overflow-hidden animate-slide-down rounded-2xl border border-primary/20">
+                        {/* Cabeçalho */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))]/40 bg-primary/5">
+                          <div className="flex items-center gap-2">
+                            <Store className="w-4 h-4 text-primary" />
+                            <p className="font-bold text-[hsl(var(--text-primary))] text-sm">{expandedInRow.name}</p>
+                            <span className="text-xs text-[hsl(var(--text-muted))]">
+                              · {formatCurrency(expandedInRow.total_sales_cents)} faturado
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setExpandedStall(null)}
+                            className="p-1 rounded-full hover:bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]"
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Tabela de produtos */}
+                        {expandedInRow.products.length === 0 ? (
+                          <p className="text-sm text-center text-[hsl(var(--text-muted))] py-6">
                             Nenhum produto cadastrado nesta barraca.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          ))
+                          </p>
+                        ) : (
+                          <div className="divide-y divide-[hsl(var(--border))]/30">
+                            {/* Cabeçalho da tabela (visível só em telas maiores) */}
+                            <div className="hidden sm:grid grid-cols-[1fr_auto_auto] gap-4 px-4 py-2 bg-[hsl(var(--bg))]/30 text-[10px] font-semibold text-[hsl(var(--text-muted))] uppercase tracking-wide">
+                              <span>Produto</span>
+                              <span className="text-center w-16">Vendidos</span>
+                              <span className="text-right w-24">Faturamento</span>
+                            </div>
+
+                            {expandedInRow.products.map(p => {
+                              const sold = p.units_sold || 0;
+                              const revenue = p.revenue_cents || 0;
+                              return (
+                                <div
+                                  key={p.id}
+                                  className="grid grid-cols-[1fr_auto_auto] gap-4 px-4 py-3 hover:bg-[hsl(var(--bg))]/30 transition-colors items-center"
+                                >
+                                  {/* Produto */}
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {p.emoji ? (
+                                      <span className="text-xl shrink-0">{p.emoji}</span>
+                                    ) : (
+                                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                        <Store className="w-3.5 h-3.5 text-primary/50" />
+                                      </div>
+                                    )}
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-[hsl(var(--text-primary))] text-sm truncate">{p.name}</p>
+                                      <p className="text-[10px] text-[hsl(var(--text-muted))]">
+                                        {formatCurrency(p.price_cents)} cada
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Unidades vendidas */}
+                                  <div className="text-center w-16">
+                                    <p className={`font-bold text-sm ${sold > 0 ? "text-[hsl(var(--text-primary))]" : "text-[hsl(var(--text-muted))]"}`}>
+                                      {sold}
+                                    </p>
+                                    <p className="text-[10px] text-[hsl(var(--text-muted))] sm:hidden">unid.</p>
+                                  </div>
+
+                                  {/* Faturamento */}
+                                  <div className="text-right w-24">
+                                    <p className={`font-bold text-sm ${revenue > 0 ? "text-emerald-500" : "text-[hsl(var(--text-muted))]"}`}>
+                                      {formatCurrency(revenue)}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Fragment>
+                );
+              });
+            })()}
+          </div>
         )}
       </section>
 
