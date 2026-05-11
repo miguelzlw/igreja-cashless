@@ -17,6 +17,8 @@ import { vibrateSuccess, vibrateError, vibrateLight } from "@/lib/utils/vibratio
 
 const QUICK_AMOUNTS = [1000, 2000, 5000, 10000];
 
+type RechargeMethod = "dinheiro" | "debito" | "credito";
+
 export default function CaixaDashboard() {
   const { user, userDoc } = useAuth();
 
@@ -31,6 +33,7 @@ export default function CaixaDashboard() {
   // Recarga
   const [amountInput, setAmountInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMethod, setProcessingMethod] = useState<RechargeMethod | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [transactionError, setTransactionError] = useState("");
 
@@ -75,7 +78,7 @@ export default function CaixaDashboard() {
 
   // ── Recarga ──────────────────────────────────────────────
 
-  const handleManualRecharge = async () => {
+  const handleManualRecharge = async (method: RechargeMethod) => {
     if (!customer) return;
     const amountCents = parseInt(amountInput.replace(/\D/g, ""));
     if (isNaN(amountCents) || amountCents < 500) {
@@ -84,18 +87,25 @@ export default function CaixaDashboard() {
     }
 
     setIsProcessing(true);
+    setProcessingMethod(method);
     setTransactionError("");
     setSuccessMessage("");
 
     try {
       const rechargeBalance = httpsCallable<
-        { user_id: string; amount_cents: number; is_temp?: boolean },
+        { user_id: string; amount_cents: number; is_temp?: boolean; payment_method: RechargeMethod },
         { success: boolean; message: string }
       >(functions, "rechargeBalance");
 
-      await rechargeBalance({ user_id: customer.uid, amount_cents: amountCents, is_temp: customer.is_temp });
+      await rechargeBalance({
+        user_id: customer.uid,
+        amount_cents: amountCents,
+        is_temp: customer.is_temp,
+        payment_method: method,
+      });
 
-      setSuccessMessage(`Recarga de ${formatCurrency(amountCents)} aplicada!`);
+      const methodLabel = method === "dinheiro" ? "Dinheiro" : method === "debito" ? "Débito" : "Crédito";
+      setSuccessMessage(`Recarga de ${formatCurrency(amountCents)} aplicada via ${methodLabel}!`);
       playSuccessSound();
       vibrateSuccess();
       setCustomer(prev =>
@@ -109,6 +119,7 @@ export default function CaixaDashboard() {
       vibrateError();
     } finally {
       setIsProcessing(false);
+      setProcessingMethod(null);
     }
   };
 
@@ -225,29 +236,68 @@ export default function CaixaDashboard() {
           )}
 
           <div className="pt-6 border-t border-[hsl(var(--border))]/50 space-y-4">
-            <p className="text-sm font-medium text-[hsl(var(--text-primary))] mb-4">2. Confirmar Pagamento:</p>
-            <button
-              onClick={handleManualRecharge}
-              disabled={isProcessing || !amountInput}
-              className="btn-primary w-full py-4 text-base flex flex-col items-center justify-center gap-1 group"
-            >
-              {isProcessing ? (
-                <Loader2 className="w-6 h-6 animate-spin" />
-              ) : (
-                <>
-                  <div className="flex items-center gap-2">
-                    <Banknote className="w-5 h-5" />
-                    <CreditCard className="w-5 h-5" />
-                    Confirmar Recarga — Cédula/Cartão
-                  </div>
-                  <span className="text-xs text-white/70 font-normal">O valor será lançado na conta do cliente.</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-[hsl(var(--text-primary))]">2. Como o cliente está pagando?</p>
+              <span className="text-[10px] text-[hsl(var(--text-muted))] uppercase tracking-wide font-semibold">
+                Selecione 1
+              </span>
+            </div>
 
-            <div className="w-full py-4 rounded-xl bg-[#00B1EA]/10 text-[#00B1EA] font-medium flex items-center justify-center gap-2 text-sm">
-              <QrCodeIcon className="w-5 h-5" />
-              PIX disponível — o cliente gera pelo app dele
+            {/* 3 botões de método de pagamento */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => handleManualRecharge("dinheiro")}
+                disabled={isProcessing || !amountInput}
+                className="py-4 px-2 rounded-xl bg-emerald-500 text-white font-bold flex flex-col items-center gap-1 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-emerald-500/20"
+              >
+                {isProcessing && processingMethod === "dinheiro" ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : (
+                  <>
+                    <Banknote className="w-6 h-6" />
+                    <span className="text-xs">Dinheiro</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => handleManualRecharge("debito")}
+                disabled={isProcessing || !amountInput}
+                className="py-4 px-2 rounded-xl bg-blue-500 text-white font-bold flex flex-col items-center gap-1 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-blue-500/20"
+              >
+                {isProcessing && processingMethod === "debito" ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : (
+                  <>
+                    <CreditCard className="w-6 h-6" />
+                    <span className="text-xs">Débito</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => handleManualRecharge("credito")}
+                disabled={isProcessing || !amountInput}
+                className="py-4 px-2 rounded-xl bg-violet-500 text-white font-bold flex flex-col items-center gap-1 hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-violet-500/20"
+              >
+                {isProcessing && processingMethod === "credito" ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : (
+                  <>
+                    <CreditCard className="w-6 h-6" />
+                    <span className="text-xs">Crédito</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <p className="text-xs text-[hsl(var(--text-muted))] text-center">
+              Após confirmar, o valor é lançado na conta do cliente.
+            </p>
+
+            <div className="w-full py-3 rounded-xl bg-[#00B1EA]/10 text-[#00B1EA] font-medium flex items-center justify-center gap-2 text-xs">
+              <QrCodeIcon className="w-4 h-4" />
+              PIX é gerado pelo cliente, no app dele
             </div>
           </div>
         </section>

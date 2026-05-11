@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { collection, onSnapshot, query, getDocs, orderBy, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { formatCurrency } from "@/lib/utils/formatters";
-import { BarChart2, Store, ArrowLeft, Loader2, ChevronDown, ChevronUp, Wallet, Banknote, Users, MoreHorizontal } from "lucide-react";
+import { BarChart2, Store, ArrowLeft, Loader2, ChevronDown, ChevronUp, Wallet, Banknote, Users, MoreHorizontal, CreditCard, QrCode } from "lucide-react";
 import Link from "next/link";
 import AuthGuard from "@/components/auth/AuthGuard";
 import type { StallDoc, ProductDoc } from "@/lib/types";
@@ -33,6 +33,18 @@ function AdminRelatorioContent() {
   const [totalRetido, setTotalRetido] = useState(0);
   const [caixas, setCaixas] = useState<{name: string, total: number, lastAt: number}[]>([]);
 
+  // Breakdown de recargas por forma de pagamento.
+  // - dinheiro/debito/credito vêm do rechargeBalance manual feito pelo caixa
+  // - pix vem do creditPixPayment (webhook Asaas)
+  // - "outros" cobre transações antigas (sem payment_method) ou valores não previstos
+  const [methodBreakdown, setMethodBreakdown] = useState({
+    dinheiro: 0,
+    debito: 0,
+    credito: 0,
+    pix: 0,
+    outros: 0,
+  });
+
   useEffect(() => {
     if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return;
 
@@ -45,6 +57,8 @@ function AdminRelatorioContent() {
         let sumRecharges = 0;
         // Por operador: agregamos total e última atividade (timestamp ms)
         const caixasMap: Record<string, { total: number; lastAt: number }> = {};
+        // Por método de pagamento
+        const methodTotals = { dinheiro: 0, debito: 0, credito: 0, pix: 0, outros: 0 };
 
         rechargesSnap.forEach(d => {
           const data = d.data();
@@ -55,9 +69,19 @@ function AdminRelatorioContent() {
           if (!caixasMap[op]) caixasMap[op] = { total: 0, lastAt: 0 };
           caixasMap[op].total += amount;
           if (ts > caixasMap[op].lastAt) caixasMap[op].lastAt = ts;
+
+          // Agregar por método. Tolerante a variações de string e a transações
+          // antigas sem o campo (vão pra "outros").
+          const rawMethod = String(data.payment_method || "").toLowerCase();
+          if (rawMethod === "dinheiro") methodTotals.dinheiro += amount;
+          else if (rawMethod === "debito" || rawMethod === "débito") methodTotals.debito += amount;
+          else if (rawMethod === "credito" || rawMethod === "crédito") methodTotals.credito += amount;
+          else if (rawMethod === "pix") methodTotals.pix += amount;
+          else methodTotals.outros += amount;
         });
 
         setTotalRecharges(sumRecharges);
+        setMethodBreakdown(methodTotals);
         // Ordem cronológica reversa: o caixa que registrou venda mais recente vem primeiro
         setCaixas(
           Object.entries(caixasMap)
@@ -157,6 +181,70 @@ function AdminRelatorioContent() {
           <p className="text-xl font-black text-warning">{formatCurrency(totalRetido)}</p>
         </div>
       </div>
+
+      {/* Breakdown de recargas por forma de pagamento.
+          Útil pro admin reconciliar caixa físico (cédulas) vs maquininha vs PIX. */}
+      <section className="glass-card p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-[hsl(var(--text-primary))] text-sm flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-primary" /> Recargas por Forma de Pagamento
+          </h3>
+          <span className="text-[10px] text-[hsl(var(--text-muted))] uppercase tracking-wide font-semibold">
+            {totalRecharges > 0 ? formatCurrency(totalRecharges) : "—"}
+          </span>
+        </div>
+
+        {totalRecharges === 0 ? (
+          <p className="text-sm text-[hsl(var(--text-muted))] text-center py-4">
+            Nenhuma recarga registrada ainda.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {[
+              { key: "dinheiro" as const, label: "Dinheiro", color: "emerald", icon: Banknote },
+              { key: "debito" as const, label: "Débito", color: "blue", icon: CreditCard },
+              { key: "credito" as const, label: "Crédito", color: "violet", icon: CreditCard },
+              { key: "pix" as const, label: "PIX", color: "cyan", icon: QrCode },
+              { key: "outros" as const, label: "Outros / Não classificado", color: "gray", icon: MoreHorizontal },
+            ].map(({ key, label, color, icon: Icon }) => {
+              const value = methodBreakdown[key];
+              const pct = totalRecharges > 0 ? (value / totalRecharges) * 100 : 0;
+              if (value === 0 && key === "outros") return null; // esconde "outros" se zero
+
+              const colorMap: Record<string, { text: string; bg: string; bar: string }> = {
+                emerald: { text: "text-emerald-500", bg: "bg-emerald-500/10", bar: "bg-emerald-500" },
+                blue:    { text: "text-blue-500",    bg: "bg-blue-500/10",    bar: "bg-blue-500" },
+                violet:  { text: "text-violet-500",  bg: "bg-violet-500/10",  bar: "bg-violet-500" },
+                cyan:    { text: "text-cyan-500",    bg: "bg-cyan-500/10",    bar: "bg-cyan-500" },
+                gray:    { text: "text-[hsl(var(--text-muted))]", bg: "bg-[hsl(var(--bg))]", bar: "bg-[hsl(var(--text-muted))]" },
+              };
+              const c = colorMap[color];
+
+              return (
+                <div key={key} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-7 h-7 rounded-lg ${c.bg} flex items-center justify-center`}>
+                        <Icon className={`w-3.5 h-3.5 ${c.text}`} />
+                      </div>
+                      <span className="font-medium text-[hsl(var(--text-primary))]">{label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[hsl(var(--text-muted))]">{pct.toFixed(0)}%</span>
+                      <span className={`font-bold ${c.text} text-sm tabular-nums min-w-[80px] text-right`}>
+                        {formatCurrency(value)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-full h-1.5 bg-[hsl(var(--bg))]/60 rounded-full overflow-hidden">
+                    <div className={`h-full ${c.bar} transition-all duration-300`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* Barracas movidas para CIMA — destaque visual prioritário */}
       <section className="space-y-4">

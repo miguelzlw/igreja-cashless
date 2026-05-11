@@ -5,11 +5,17 @@ import { validateAmountCents, validateUid } from "../utils/validation";
 import { checkRateLimit } from "../security/rateLimiter";
 import * as admin from "firebase-admin";
 
+// Métodos de pagamento aceitos numa recarga manual feita pelo caixa.
+// "pix" não entra aqui porque PIX é creditado pela Cloud Function creditPixPayment
+// (chamada pelo webhook do Asaas), com payment_method="pix" gravado lá.
+const VALID_RECHARGE_METHODS = ["dinheiro", "debito", "credito"] as const;
+type RechargeMethod = typeof VALID_RECHARGE_METHODS[number];
+
 /**
  * Callable Function: Recarga manual de saldo pelo Caixa.
- * Usado quando o cliente paga em dinheiro no caixa de recarga.
+ * Usado quando o cliente paga em dinheiro/cartão no caixa de recarga.
  *
- * Apenas roles "caixa" e "admin" podem executar.
+ * Apenas roles "caixa", "admin" e "desenvolvedor" podem executar.
  */
 export const rechargeBalance = onCall(
   { region: REGION, enforceAppCheck: false },
@@ -20,10 +26,11 @@ export const rechargeBalance = onCall(
     }
 
     const operatorId = request.auth.uid;
-    const { user_id, amount_cents, is_temp = false } = request.data as {
+    const { user_id, amount_cents, is_temp = false, payment_method } = request.data as {
       user_id: string;
       amount_cents: number;
       is_temp?: boolean;
+      payment_method?: string;
     };
 
     // 1a. Rate limiting: máximo 30 recargas por minuto por operador
@@ -32,6 +39,15 @@ export const rechargeBalance = onCall(
     // 2. Validar
     const targetUserId = validateUid(user_id, "user_id");
     const amountCents = validateAmountCents(amount_cents, "amount_cents");
+
+    // payment_method: obrigatório, dentro do whitelist
+    const method = String(payment_method || "").toLowerCase() as RechargeMethod;
+    if (!(VALID_RECHARGE_METHODS as readonly string[]).includes(method)) {
+      throw Errors.INVALID_ARGUMENT(
+        "payment_method",
+        `Método inválido. Use um de: ${VALID_RECHARGE_METHODS.join(", ")}`
+      );
+    }
 
     if (amountCents < EVENT_CONFIG.MIN_RECHARGE_CENTS) {
       throw Errors.INVALID_ARGUMENT("amount_cents", `valor mínimo: R$ ${(EVENT_CONFIG.MIN_RECHARGE_CENTS / 100).toFixed(2)}`);
@@ -77,7 +93,7 @@ export const rechargeBalance = onCall(
         user_name: is_temp ? `Ficha #${targetData.code}` : targetData.name,
         operator_id: operatorId,
         operator_name: operatorData.name,
-        payment_method: "manual",
+        payment_method: method, // "dinheiro" | "debito" | "credito"
         status: "completed",
         created_at: now,
       });
