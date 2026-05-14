@@ -15,7 +15,8 @@ import QRScanner from "@/components/shared/QRScanner";
 import { playSuccessSound, playErrorSound } from "@/lib/utils/sounds";
 import { vibrateSuccess, vibrateError, vibrateLight } from "@/lib/utils/vibration";
 
-const QUICK_AMOUNTS = [1000, 2000, 5000, 10000];
+// Valores rápidos em REAIS (não centavos). O input do caixa trabalha em reais.
+const QUICK_AMOUNTS_REAIS = [10, 20, 50, 100];
 
 type RechargeMethod = "dinheiro" | "debito" | "credito";
 
@@ -80,11 +81,14 @@ export default function CaixaDashboard() {
 
   const handleManualRecharge = async (method: RechargeMethod) => {
     if (!customer) return;
-    const amountCents = parseInt(amountInput.replace(/\D/g, ""));
-    if (isNaN(amountCents) || amountCents < 500) {
+    // amountInput contém apenas dígitos representando REAIS (ex: "23" = R$ 23,00).
+    // Convertemos para centavos multiplicando por 100.
+    const amountReais = parseInt(amountInput.replace(/\D/g, ""));
+    if (isNaN(amountReais) || amountReais < 5) {
       setTransactionError("Valor inválido. O mínimo é R$ 5,00.");
       return;
     }
+    const amountCents = amountReais * 100;
 
     setIsProcessing(true);
     setProcessingMethod(method);
@@ -204,25 +208,46 @@ export default function CaixaDashboard() {
           <div className="space-y-4">
             <p className="text-sm font-medium text-[hsl(var(--text-primary))]">1. Selecione o valor:</p>
             <div className="grid grid-cols-2 gap-3">
-              {QUICK_AMOUNTS.map(amt => (
+              {QUICK_AMOUNTS_REAIS.map(reais => (
                 <button
-                  key={amt}
-                  onClick={() => setAmountInput(formatCurrency(amt).replace("R$", "").trim())}
-                  className="p-4 rounded-xl border border-[hsl(var(--border))] hover:border-primary hover:bg-primary/5 text-center text-lg font-bold text-[hsl(var(--text-primary))] transition-colors"
+                  key={reais}
+                  onClick={() => setAmountInput(String(reais))}
+                  className={`p-4 rounded-xl border text-center text-lg font-bold transition-colors ${
+                    parseInt(amountInput) === reais
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-[hsl(var(--border))] text-[hsl(var(--text-primary))] hover:border-primary hover:bg-primary/5"
+                  }`}
                 >
-                  +{formatCurrency(amt).replace("R$", "").trim()}
+                  +R$ {reais}
                 </button>
               ))}
             </div>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[hsl(var(--text-muted))] font-medium">R$</span>
-              <input
-                type="text"
-                className="input text-lg font-bold pl-12 h-14"
-                placeholder="Outro valor..."
-                value={amountInput}
-                onChange={e => setAmountInput(e.target.value)}
-              />
+
+            {/* Input só aceita dígitos. Cada dígito é interpretado como reais.
+                Ex: digitar "23" = R$ 23,00. Digitar "9" = R$ 9,00.
+                Não precisa digitar vírgula nem ",00" — sistema entende. */}
+            <div>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[hsl(var(--text-muted))] font-medium">R$</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="input text-lg font-bold pl-12 h-14"
+                  placeholder="Digite o valor (ex: 25)"
+                  value={amountInput}
+                  onChange={e => {
+                    // Aceita só dígitos, máximo 4 (até R$ 9999)
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
+                    setAmountInput(digits);
+                  }}
+                />
+              </div>
+              {/* Confirmação visual do valor que será cobrado */}
+              {amountInput && parseInt(amountInput) > 0 && (
+                <p className="text-xs text-[hsl(var(--text-muted))] mt-1.5 text-right">
+                  = <span className="font-bold text-primary">{formatCurrency(parseInt(amountInput) * 100)}</span>
+                </p>
+              )}
             </div>
           </div>
 

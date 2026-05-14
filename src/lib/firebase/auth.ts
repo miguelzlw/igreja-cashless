@@ -12,7 +12,7 @@ import {
 } from "firebase/auth";
 import { auth } from "./config";
 
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
 
 const googleProvider = new GoogleAuthProvider();
@@ -31,6 +31,7 @@ async function ensureUserDocument(user: User, nameFallBack?: string, cpf?: strin
   const snap = await getDoc(userRef);
 
   if (!snap.exists()) {
+    // Doc ainda não existe — cria do zero.
     const qrHmac = await generateClientHMAC(user.uid);
     const baseDoc: Record<string, unknown> = {
       uid: user.uid,
@@ -45,6 +46,25 @@ async function ensureUserDocument(user: User, nameFallBack?: string, cpf?: strin
     };
     if (cpf) baseDoc.cpf = cpf;
     await setDoc(userRef, baseDoc);
+    return;
+  }
+
+  // Doc já existe (provavelmente criado pelo trigger onUserCreate, que roda
+  // ANTES desta função e não tem acesso ao CPF do formulário). Se o CPF foi
+  // informado no cadastro mas o doc ainda não tem, atualiza só esse campo.
+  // Evita que o user precise digitar CPF de novo na hora do PIX.
+  const data = snap.data();
+  if (cpf && !data?.cpf) {
+    try {
+      await updateDoc(userRef, {
+        cpf,
+        updated_at: serverTimestamp(),
+      });
+    } catch (err) {
+      // Não bloqueia o login se o update falhar — o user vai precisar
+      // informar o CPF na hora do PIX como fallback.
+      console.warn("[ensureUserDocument] não foi possível salvar CPF:", err);
+    }
   }
 }
 
