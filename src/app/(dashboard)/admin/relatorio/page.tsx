@@ -45,6 +45,11 @@ function AdminRelatorioContent() {
     outros: 0,
   });
 
+  // Diagnóstico: quais valores brutos de payment_method existem no banco e
+  // quanto cada um soma. Útil pra detectar se a Cloud Function ainda está
+  // gravando "manual" (deploy não rolou) ou outro valor inesperado.
+  const [methodRawCounts, setMethodRawCounts] = useState<Record<string, { count: number; total: number }>>({});
+
   useEffect(() => {
     if (!user || (userDoc?.role !== "admin" && userDoc?.role !== "desenvolvedor")) return;
 
@@ -59,6 +64,8 @@ function AdminRelatorioContent() {
         const caixasMap: Record<string, { total: number; lastAt: number }> = {};
         // Por método de pagamento
         const methodTotals = { dinheiro: 0, debito: 0, credito: 0, pix: 0, outros: 0 };
+        // Diagnóstico: contar todos os valores brutos
+        const rawCounts: Record<string, { count: number; total: number }> = {};
 
         rechargesSnap.forEach(d => {
           const data = d.data();
@@ -73,6 +80,13 @@ function AdminRelatorioContent() {
           // Agregar por método. Tolerante a variações de string e a transações
           // antigas sem o campo (vão pra "outros").
           const rawMethod = String(data.payment_method || "").toLowerCase();
+
+          // Contar valor bruto pra debug
+          const rawKey = data.payment_method == null ? "(null/sem campo)" : String(data.payment_method);
+          if (!rawCounts[rawKey]) rawCounts[rawKey] = { count: 0, total: 0 };
+          rawCounts[rawKey].count += 1;
+          rawCounts[rawKey].total += amount;
+
           if (rawMethod === "dinheiro") methodTotals.dinheiro += amount;
           else if (rawMethod === "debito" || rawMethod === "débito") methodTotals.debito += amount;
           else if (rawMethod === "credito" || rawMethod === "crédito") methodTotals.credito += amount;
@@ -82,6 +96,7 @@ function AdminRelatorioContent() {
 
         setTotalRecharges(sumRecharges);
         setMethodBreakdown(methodTotals);
+        setMethodRawCounts(rawCounts);
         // Ordem cronológica reversa: o caixa que registrou venda mais recente vem primeiro
         setCaixas(
           Object.entries(caixasMap)
@@ -243,6 +258,38 @@ function AdminRelatorioContent() {
               );
             })}
           </div>
+        )}
+
+        {/* Diagnóstico: lista os valores brutos de payment_method que existem
+            no banco. Útil pra detectar casos como CF antiga gravando "manual"
+            ou recargas vindas de versões anteriores sem o campo. */}
+        {Object.keys(methodRawCounts).length > 0 && (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text-primary))] py-2 select-none">
+              🔍 Diagnóstico (valores brutos no banco)
+            </summary>
+            <div className="mt-2 space-y-1 bg-[hsl(var(--bg))]/40 rounded-lg p-3 font-mono">
+              {Object.entries(methodRawCounts)
+                .sort((a, b) => b[1].total - a[1].total)
+                .map(([raw, info]) => (
+                  <div key={raw} className="flex items-center justify-between gap-2">
+                    <span className="text-[hsl(var(--text-primary))]">
+                      <span className="text-[hsl(var(--text-muted))]">payment_method:</span>{" "}
+                      <span className={raw === "manual" || raw === "(null/sem campo)" ? "text-warning font-bold" : "text-emerald-500"}>
+                        {raw}
+                      </span>
+                    </span>
+                    <span className="text-[hsl(var(--text-muted))]">
+                      {info.count}× = {formatCurrency(info.total)}
+                    </span>
+                  </div>
+                ))}
+              <p className="text-[10px] text-[hsl(var(--text-muted))] mt-2 pt-2 border-t border-[hsl(var(--border))]/30 font-sans">
+                Se aparece <strong className="text-warning">manual</strong> ou <strong className="text-warning">(null)</strong>:
+                a Cloud Function rechargeBalance ainda está na versão antiga. Rode <code className="bg-[hsl(var(--bg))] px-1 rounded">firebase deploy --only functions:rechargeBalance</code> e teste de novo.
+              </p>
+            </div>
+          </details>
         )}
       </section>
 
