@@ -2,28 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== Design System: Igreja Cashless ===== */
+/* ═══════════════════════════════════════════════════════════════════════
+   Design System "Terra — Organic Design" (redesign Stitch)
+   ───────────────────────────────────────────────────────────────────────
+   Paleta earthy/desaturada — verde-floresta, marrom-terroso e ocre dourado.
+   Tons cream em vez de branco puro, tons verde-escuros em vez de preto.
+   "Cada cinza tem um undertone amarelo ou verde" — princípio Terra.
+   ─────────────────────────────────────────────────────────────────────── */
 
 @layer base {
   :root {
-    --bg: 0, 0%, 98%;
-    --surface: 0, 0%, 100%;
-    --text-primary: 230, 25%, 10%;
-    --text-secondary: 230, 15%, 40%;
-    --text-muted: 230, 10%, 60%;
-    --border: 230, 15%, 90%;
-    --ring: 250, 80%, 55%;
-    --overlay: 0, 0%, 0%;
+    /* Tema CLARO — base cream/off-white */
+    --bg: 35, 38%, 96%;             /* #faf6f0 — fundo creme principal */
+    --surface: 0, 0%, 100%;          /* #ffffff — cards sobre o creme */
+    --surface-low: 36, 28%, 94%;     /* #f5f1ea — variação sutil */
+    --surface-high: 35, 25%, 90%;    /* #eae6de — destaque calmo */
+    --text-primary: 165, 5%, 19%;    /* #2e3230 — quase preto, com undertone verde */
+    --text-secondary: 38, 11%, 38%;  /* #6b6358 — marrom suave */
+    --text-muted: 60, 4%, 50%;       /* #82827e — neutro warm */
+    --border: 80, 7%, 76%;           /* #c4c8bc — borda muito sutil */
+    --ring: 138, 25%, 39%;           /* #4a7c59 — verde primary */
+    --overlay: 165, 5%, 19%;         /* sombra com undertone */
   }
 
   .dark {
-    --bg: 230, 25%, 10%;
-    --surface: 230, 25%, 14%;
-    --text-primary: 0, 0%, 95%;
-    --text-secondary: 230, 15%, 70%;
-    --text-muted: 230, 10%, 50%;
-    --border: 230, 20%, 22%;
-    --ring: 250, 80%, 65%;
+    /* Tema ESCURO — verde-escuro sofisticado em vez de preto puro */
+    --bg: 160, 6%, 10%;              /* #181c1a — fundo profundo */
+    --surface: 165, 5%, 14%;         /* #1d211f — cards */
+    --surface-low: 165, 5%, 18%;     /* #272b29 */
+    --surface-high: 165, 5%, 22%;    /* #313533 */
+    --text-primary: 40, 25%, 92%;    /* #f0ece4 — cream sobre escuro */
+    --text-secondary: 36, 15%, 70%;  /* #c4baad */
+    --text-muted: 35, 10%, 55%;      /* #968b7d */
+    --border: 165, 5%, 25%;          /* #3c403e */
+    --ring: 138, 30%, 60%;           /* verde primary mais claro */
     --overlay: 0, 0%, 0%;
   }
 
@@ -38,9 +50,16 @@
   body {
     @apply bg-[hsl(var(--bg))] text-[hsl(var(--text-primary))] font-sans antialiased;
     -webkit-tap-highlight-color: transparent;
+    line-height: 1.6; /* Terra: leitura "comfortable, unhurried" */
   }
 
-  /* Custom scrollbar */
+  /* Headlines usam serifa Literata — personalidade quente.
+     Aplicado direto via CSS var pra evitar circular dependency com `font-headline` do Tailwind. */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-literata), Georgia, serif;
+  }
+
+  /* Custom scrollbar — quase invisível */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -57,100 +76,118 @@
 }
 
 @layer components {
-  /* Glassmorphism card */
+  /* ─── Glassmorphism Terra — base cream translúcida ───────────────── */
   .glass-card {
-    @apply bg-[hsl(var(--surface)/0.8)] backdrop-blur-lg border border-[hsl(var(--border)/0.5)] rounded-2xl shadow-lg;
+    background: hsl(var(--surface) / 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    @apply border border-[hsl(var(--border)/0.4)] rounded-3xl shadow-terra;
   }
 
   .dark .glass-card {
-    @apply bg-[hsl(var(--surface)/0.6)] border-[hsl(var(--border)/0.3)];
+    background: hsl(var(--surface) / 0.6);
+    @apply border-[hsl(var(--border)/0.3)];
   }
 
-  /* Gradient text */
+  /* ─── Cards sólidos ──────────────────────────────────────────────── */
+  .card {
+    @apply bg-[hsl(var(--surface))] rounded-3xl border border-[hsl(var(--border)/0.4)]
+           p-6 shadow-terra transition-all duration-200;
+  }
+
+  .card-interactive {
+    @apply card cursor-pointer hover:shadow-terra-lg hover:border-primary/30
+           active:scale-[0.98] hover:-translate-y-0.5;
+  }
+
+  /* ─── Gradient text — verde floresta -> ocre ─────────────────────── */
   .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary-300;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-tertiary;
   }
 
-  /* Balance card glow */
+  /* ─── Balance glow — verde suave pulsando ────────────────────────── */
   .balance-glow {
     @apply relative overflow-hidden;
   }
   .balance-glow::before {
     content: "";
-    @apply absolute -inset-1 bg-gradient-to-r from-primary/20 via-primary-300/20 to-primary/20 rounded-2xl blur-xl opacity-60;
+    @apply absolute -inset-1 bg-gradient-to-r from-primary/20 via-tertiary/15 to-primary/20
+           rounded-3xl blur-xl opacity-60;
     animation: pulseSoft 3s ease-in-out infinite;
   }
 
-  /* Shimmer loading */
+  /* ─── Shimmer loading ────────────────────────────────────────────── */
   .shimmer {
     @apply relative overflow-hidden;
   }
   .shimmer::after {
     content: "";
     @apply absolute inset-0;
-    background: linear-gradient(90deg, transparent, hsl(var(--surface) / 0.4), transparent);
+    background: linear-gradient(90deg, transparent, hsl(var(--surface) / 0.5), transparent);
     background-size: 200% 100%;
     animation: shimmer 2s linear infinite;
   }
 
-  /* Touch-friendly button base */
+  /* ─── Botões: cantos arredondados generosos, press-down responsivo ── */
   .btn {
     @apply inline-flex items-center justify-center gap-2 font-semibold rounded-xl
            min-h-[48px] px-6 transition-all duration-200 ease-out
            active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2;
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--bg))];
   }
 
   .btn-primary {
-    @apply btn bg-primary text-white hover:bg-primary-hover shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/30;
+    @apply btn bg-primary text-white hover:bg-primary-hover
+           shadow-terra-glow hover:shadow-lg hover:shadow-primary/30;
   }
 
   .btn-secondary {
-    @apply btn bg-[hsl(var(--surface))] text-[hsl(var(--text-primary))] border border-[hsl(var(--border))]
-           hover:bg-[hsl(var(--bg))] shadow-sm;
+    @apply btn bg-[hsl(var(--surface))] text-primary border border-[hsl(var(--border))]
+           hover:bg-[hsl(var(--surface-low))] shadow-terra;
+  }
+
+  .btn-tertiary {
+    @apply btn bg-tertiary text-white hover:bg-tertiary-hover
+           shadow-terra hover:shadow-terra-lg;
   }
 
   .btn-success {
-    @apply btn bg-success text-white hover:bg-success-light shadow-md shadow-success/25;
+    @apply btn bg-success text-white hover:bg-success-light shadow-terra;
   }
 
   .btn-danger {
-    @apply btn bg-danger text-white hover:bg-danger-light shadow-md shadow-danger/25;
+    @apply btn bg-danger text-white hover:bg-danger-light shadow-terra;
   }
 
   .btn-ghost {
-    @apply btn text-[hsl(var(--text-secondary))] hover:bg-[hsl(var(--surface))] hover:text-[hsl(var(--text-primary))];
+    @apply btn text-[hsl(var(--text-secondary))]
+           hover:bg-[hsl(var(--surface-low))] hover:text-[hsl(var(--text-primary))];
   }
 
   .btn-icon {
-    @apply btn p-0 w-12 h-12 min-h-0;
+    @apply btn p-0 w-12 h-12 min-h-0 rounded-full;
   }
 
-  /* Input base */
+  /* ─── Input ──────────────────────────────────────────────────────── */
   .input {
     @apply w-full min-h-[48px] px-4 rounded-xl border border-[hsl(var(--border))]
            bg-[hsl(var(--surface))] text-[hsl(var(--text-primary))]
            placeholder:text-[hsl(var(--text-muted))]
-           focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent
+           focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/60
            transition-all duration-200;
   }
 
-  /* Card */
-  .card {
-    @apply bg-[hsl(var(--surface))] rounded-2xl border border-[hsl(var(--border))] p-6 shadow-sm transition-all duration-200;
-  }
-
-  .card-interactive {
-    @apply card hover:shadow-md hover:border-primary/30 cursor-pointer active:scale-[0.98];
-  }
-
-  /* Badge */
+  /* ─── Badge ─────────────────────────────────────────────────────── */
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
 
   .badge-primary {
-    @apply badge bg-primary-50 text-primary dark:bg-primary/20 dark:text-primary-light;
+    @apply badge bg-primary-50 text-primary-700 dark:bg-primary/20 dark:text-primary-light;
+  }
+
+  .badge-tertiary {
+    @apply badge bg-tertiary-50 text-tertiary-700 dark:bg-tertiary/20 dark:text-tertiary-light;
   }
 
   .badge-success {
@@ -165,7 +202,7 @@
     @apply badge bg-warning-50 text-warning dark:bg-warning/20 dark:text-warning-light;
   }
 
-  /* Modal overlay */
+  /* ─── Modal ──────────────────────────────────────────────────────── */
   .modal-overlay {
     @apply fixed inset-0 z-50 bg-[hsl(var(--overlay)/0.5)] backdrop-blur-sm
            flex items-center justify-center p-4 animate-fade-in;
@@ -175,10 +212,10 @@
     @apply glass-card w-full max-w-md p-6 animate-scale-bounce;
   }
 
-  /* Offline banner */
+  /* ─── Offline banner ─────────────────────────────────────────────── */
   .offline-banner {
-    @apply fixed top-0 left-0 right-0 z-[100] bg-danger text-white text-center py-2 px-4 text-sm font-medium
-           animate-slide-down shadow-lg;
+    @apply fixed top-0 left-0 right-0 z-[100] bg-danger text-white text-center
+           py-2 px-4 text-sm font-medium animate-slide-down shadow-lg;
   }
 }
 
@@ -193,5 +230,12 @@
 
   .safe-top {
     padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Bandeirinha junina decorativa — pode aplicar onde quiser sutilmente */
+  .pennant-row {
+    background-image:
+      linear-gradient(45deg, transparent 49%, hsl(var(--text-muted) / 0.15) 50%, transparent 51%);
+    background-size: 12px 12px;
   }
 }
