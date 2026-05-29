@@ -1,53 +1,67 @@
 import { formatCurrency } from "@/lib/utils/formatters";
 import { MAX_BALANCE_CENTS } from "@/lib/config/limits";
-import { Wallet, QrCode } from "lucide-react";
+import { QrCode } from "lucide-react";
 
 interface UserBalanceCardProps {
   balanceCents: number;
   onOpenQR: () => void;
 }
 
+/**
+ * Cartão de saldo principal — visual "Terra" do Stitch:
+ * gradiente verde-floresta → ocre dourado, texto branco grande e
+ * botão "Ver meu QR Code" em pílula cream destacando dentro do gradiente.
+ */
 export default function UserBalanceCard({ balanceCents, onOpenQR }: UserBalanceCardProps) {
   const percentOfLimit = Math.min(100, Math.round((balanceCents / MAX_BALANCE_CENTS) * 100));
   const nearLimit = balanceCents >= MAX_BALANCE_CENTS * 0.8;
 
   return (
-    <div className="glass-card overflow-hidden relative mb-8 animate-fade-in group">
-      {/* Decorative gradient blur inside card */}
-      <div className="absolute -top-12 -right-12 w-32 h-32 bg-primary/20 rounded-full blur-2xl group-hover:bg-primary/30 transition-colors" />
+    <div className="relative rounded-3xl overflow-hidden shadow-terra-glow animate-fade-in">
+      {/* Gradiente verde-floresta → ocre (identidade Terra) */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary-600 to-tertiary" />
 
-      <div className="relative z-10 p-6 flex flex-col items-center text-center">
-        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-          <Wallet className="w-6 h-6 text-primary" />
-        </div>
+      {/* Brilho decorativo (camadas pra dar profundidade) */}
+      <div className="absolute -top-20 -right-20 w-64 h-64 bg-tertiary-300/30 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-primary-300/20 rounded-full blur-3xl pointer-events-none" />
 
-        <p className="text-sm font-medium text-[hsl(var(--text-secondary))] mb-1 uppercase tracking-wide">
-          Seu Saldo
+      <div className="relative z-10 px-6 pt-7 pb-6 text-center text-white">
+        {/* Label */}
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/80 mb-3">
+          Saldo Disponível
         </p>
-        <h2 className="text-4xl font-bold text-[hsl(var(--text-primary))] mb-3 tracking-tight">
+
+        {/* Valor — grande, com Literata pra ter personalidade */}
+        <h2 className="font-headline text-5xl md:text-6xl font-bold tracking-tight mb-5 leading-none">
           {formatCurrency(balanceCents)}
         </h2>
 
-        {/* Indicador de limite */}
-        <div className="w-full mb-5 space-y-1.5">
-          <div className="flex items-center justify-between text-[10px] text-[hsl(var(--text-muted))] font-medium uppercase tracking-wide">
-            <span>Limite máximo</span>
-            <span>{formatCurrency(MAX_BALANCE_CENTS)}</span>
+        {/* Barra de limite — só aparece quando perto do teto */}
+        {nearLimit && (
+          <div className="mb-5 space-y-1.5 text-white/90">
+            <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider">
+              <span>Perto do limite</span>
+              <span>{formatCurrency(MAX_BALANCE_CENTS)}</span>
+            </div>
+            <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-white transition-all duration-300"
+                style={{ width: `${percentOfLimit}%` }}
+              />
+            </div>
           </div>
-          <div className="w-full h-1.5 bg-[hsl(var(--bg))] rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all duration-300 ${nearLimit ? "bg-warning" : "bg-primary"}`}
-              style={{ width: `${percentOfLimit}%` }}
-            />
-          </div>
-        </div>
+        )}
 
+        {/* Botão QR — pílula cream contrasting com o gradiente */}
         <button
           onClick={onOpenQR}
-          className="btn-primary w-full shadow-lg shadow-primary/25 flex items-center justify-center gap-2 group-hover:scale-[1.02] transition-transform"
+          className="w-full inline-flex items-center justify-center gap-2
+                     bg-[hsl(var(--surface))] text-primary font-bold
+                     px-6 py-3.5 rounded-2xl shadow-lg
+                     hover:bg-white active:scale-[0.98] transition-all"
         >
           <QrCode className="w-5 h-5" />
-          Pagar com QR Code
+          Ver meu QR Code
         </button>
       </div>
     </div>

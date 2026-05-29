@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { db } from "@/lib/firebase/config";
 import { auth } from "@/lib/firebase/config";
@@ -354,17 +355,17 @@ export default function UserDashboard() {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 space-y-8 animate-fade-in pb-24">
-      {/* Header */}
+      {/* Header — saudação grande estilo Stitch */}
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold text-[hsl(var(--text-primary))]">
+        <h1 className="font-headline text-3xl font-bold text-[hsl(var(--text-primary))]">
           Olá, {userDoc.name.split(" ")[0]}! 👋
         </h1>
-        <p className="text-[hsl(var(--text-secondary))] text-sm">
+        <p className="text-[hsl(var(--text-secondary))] text-base">
           Aproveite a festa!
         </p>
       </header>
 
-      {/* Saldo e Ações */}
+      {/* Saldo — agora com gradiente verde→ocre, botão QR dentro */}
       <section>
         <UserBalanceCard
           balanceCents={userDoc.balance}
@@ -372,34 +373,33 @@ export default function UserDashboard() {
         />
       </section>
 
-      {/* Botão de Recarga PIX */}
-      <section>
+      {/* Botão Recarregar PIX — verde sólido, ação principal */}
+      <section className="space-y-3">
         <button
           onClick={() => setIsPixOpen(true)}
-          className="w-full glass-card p-4 flex items-center justify-between hover:border-[#00B1EA]/40 hover:bg-[#00B1EA]/5 transition-all group border border-[hsl(var(--border))]"
+          className="btn-primary w-full py-4 text-base flex items-center justify-center gap-2.5"
         >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#00B1EA]/10 flex items-center justify-center">
-              <QrCode className="w-5 h-5 text-[#00B1EA]" />
-            </div>
-            <div className="text-left">
-              <p className="font-bold text-[hsl(var(--text-primary))]">Recarregar via PIX</p>
-              <p className="text-xs text-[hsl(var(--text-secondary))]">Adicione saldo instantaneamente</p>
-            </div>
-          </div>
-          <span className="text-xs bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-medium">Disponível</span>
+          <QrCode className="w-5 h-5" />
+          Recarregar via PIX
         </button>
+
+        {/* Link de reembolso — só aparece se tiver saldo */}
+        {(userDoc.balance || 0) > 0 && (
+          <Link
+            href="/user/reembolso"
+            className="btn-secondary w-full py-3 text-sm flex items-center justify-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Solicitar Reembolso
+          </Link>
+        )}
       </section>
 
-      {/* Cardápio da Festa */}
+      {/* Explorar Barracas — título Stitch */}
       <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-primary" />
-          <h2 className="text-xl font-bold text-[hsl(var(--text-primary))]">Cardápio</h2>
-        </div>
-        <p className="text-sm text-[hsl(var(--text-secondary))]">
-          Toque em uma barraca para ver o que está servindo 🍢
-        </p>
+        <h2 className="font-headline text-2xl font-bold text-[hsl(var(--text-primary))]">
+          Explorar Barracas
+        </h2>
 
         {menuLoading ? (
           <div className="flex justify-center py-8">
@@ -433,38 +433,34 @@ export default function UserDashboard() {
                           <button
                             key={stall.id}
                             onClick={() => setExpandedStall(isSelected ? null : stall.id)}
-                            className={`relative glass-card p-4 flex flex-col items-center text-center gap-2 transition-all duration-200 rounded-2xl border ${
+                            className={`relative bg-[hsl(var(--surface))] p-5 flex flex-col items-center text-center gap-3 transition-all duration-300 rounded-3xl shadow-terra ${
                               isSelected
-                                ? "border-primary/50 bg-primary/5 shadow-lg shadow-primary/10"
-                                : "border-transparent hover:border-primary/20 hover:bg-[hsl(var(--card))]/60"
+                                ? "ring-2 ring-primary/40 -translate-y-0.5 shadow-terra-lg"
+                                : "hover:-translate-y-0.5 hover:shadow-terra-lg active:scale-[0.98]"
                             }`}
                           >
-                            {/* Ícone */}
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                            {/* Ícone circular GRANDE estilo Stitch */}
+                            <div className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${
                               isSelected ? "bg-primary/20" : "bg-primary/10"
                             }`}>
-                              <Store className={`w-6 h-6 transition-colors ${isSelected ? "text-primary" : "text-primary/70"}`} />
+                              <Store className={`w-7 h-7 transition-colors ${isSelected ? "text-primary" : "text-primary/80"}`} />
                             </div>
 
                             {/* Nome */}
-                            <p className={`font-bold text-sm leading-tight transition-colors ${
+                            <p className={`font-headline font-bold text-base leading-tight transition-colors ${
                               isSelected ? "text-primary" : "text-[hsl(var(--text-primary))]"
                             }`}>
                               {stall.name}
                             </p>
 
-                            {/* Contagem */}
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
-                              isSelected
-                                ? "bg-primary/15 text-primary"
-                                : "bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]"
-                            }`}>
+                            {/* Contagem — discreta */}
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--text-muted))]">
                               {stall.products.length} {stall.products.length !== 1 ? "itens" : "item"}
                             </span>
 
-                            {/* Chevron */}
-                            <div className={`absolute bottom-2 right-2 transition-transform duration-200 ${isSelected ? "rotate-180" : ""}`}>
-                              <ChevronDown className={`w-4 h-4 ${isSelected ? "text-primary" : "text-[hsl(var(--text-muted))]"}`} />
+                            {/* Chevron sutil */}
+                            <div className={`absolute top-3 right-3 transition-transform duration-300 ${isSelected ? "rotate-180" : ""}`}>
+                              <ChevronDown className={`w-4 h-4 ${isSelected ? "text-primary" : "text-[hsl(var(--text-muted))]/60"}`} />
                             </div>
                           </button>
                         );

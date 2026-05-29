@@ -65,9 +65,11 @@ export default function TransactionHistory({ userId, limit }: TransactionHistory
 
   if (transactions.length === 0) {
     return (
-      <div className="glass-card p-8 text-center flex flex-col items-center justify-center min-h-[200px]">
-        <Clock className="w-12 h-12 text-[hsl(var(--text-muted))] opacity-50 mb-4" />
-        <p className="text-[hsl(var(--text-secondary))] mb-1">Nenhuma transação ainda</p>
+      <div className="bg-[hsl(var(--surface))] rounded-3xl shadow-terra p-8 text-center flex flex-col items-center justify-center min-h-[200px]">
+        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+          <Clock className="w-8 h-8 text-primary/60" />
+        </div>
+        <p className="font-headline font-bold text-[hsl(var(--text-primary))] mb-1">Nenhuma transação ainda</p>
         <p className="text-sm text-[hsl(var(--text-muted))]">
           Faça uma recarga no caixa para começar a aproveitar a festa.
         </p>
@@ -77,32 +79,35 @@ export default function TransactionHistory({ userId, limit }: TransactionHistory
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-[hsl(var(--text-primary))] flex items-center gap-2 mb-4">
-        Atividade Recente
+      <h3 className="font-headline text-2xl font-bold text-[hsl(var(--text-primary))]">
+        Histórico Recente
       </h3>
-      
-      <div className="space-y-3">
+
+      <div className="space-y-2.5">
         {transactions.map((tx) => {
           const isCredit = tx.type === "recharge" || tx.type === "refund";
           const isPix = tx.payment_method === "pix";
-          
+
           return (
-            <div key={tx.id} className="glass-card p-4 flex items-center gap-4 hover:bg-[hsl(var(--card))]/60 transition-colors">
-              {/* Ícone */}
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                isCredit ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
+            <div
+              key={tx.id}
+              className="bg-[hsl(var(--surface))] rounded-2xl shadow-terra p-4 flex items-center gap-4 hover:shadow-terra-lg hover:-translate-y-0.5 transition-all duration-200"
+            >
+              {/* Ícone — círculo Terra: verde pra crédito, ocre/danger pra débito */}
+              <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${
+                isCredit ? 'bg-primary/10 text-primary' : 'bg-danger/10 text-danger'
               }`}>
                 {isCredit ? <ArrowDownRight className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
               </div>
 
               {/* Detalhes */}
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[hsl(var(--text-primary))] truncate">
-                  {tx.type === "purchase" ? tx.stall_name || "Compra na Barraca" : 
+                <p className="font-bold text-[hsl(var(--text-primary))] truncate">
+                  {tx.type === "purchase" ? tx.stall_name || "Compra na Barraca" :
                    tx.type === "recharge" ? (isPix ? "Recarga via PIX" : "Recarga Manual") :
                    tx.type === "refund" ? "Estorno" : "Transação"}
                 </p>
-                <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--text-muted))] mt-1">
+                <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--text-muted))] mt-0.5">
                   <Clock className="w-3 h-3" />
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {tx.created_at != null ? (typeof (tx.created_at as any)?.toDate === 'function' ? formatDate((tx.created_at as any).toDate()) : formatDate(new Date(tx.created_at as string))) : ''}
@@ -112,7 +117,7 @@ export default function TransactionHistory({ userId, limit }: TransactionHistory
               {/* Valor */}
               <div className="text-right">
                 <p className={`font-bold whitespace-nowrap ${
-                  isCredit ? 'text-emerald-500' : 'text-[hsl(var(--text-primary))]'
+                  isCredit ? 'text-primary' : 'text-[hsl(var(--text-primary))]'
                 }`}>
                   {isCredit ? "+" : "-"}{formatCurrency(tx.amount_cents)}
                 </p>
@@ -125,7 +130,7 @@ export default function TransactionHistory({ userId, limit }: TransactionHistory
       {hasMore && (
         <Link
           href="/user/extrato"
-          className="block w-full mt-2 py-3 px-4 rounded-xl border border-dashed border-[hsl(var(--border))] hover:border-primary/60 hover:bg-primary/5 transition-colors text-center group"
+          className="block w-full mt-1 py-3 px-4 rounded-2xl border border-dashed border-[hsl(var(--border))] hover:border-primary/60 hover:bg-primary/5 transition-colors text-center group"
         >
           <div className="flex items-center justify-center gap-2 text-[hsl(var(--text-secondary))] group-hover:text-primary transition-colors">
             <MoreHorizontal className="w-4 h-4" />
